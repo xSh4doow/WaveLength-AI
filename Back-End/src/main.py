@@ -1,8 +1,8 @@
 import os
 import io
 import uuid
-from typing import Optional
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+from typing import Optional, List
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
 from PIL import Image
@@ -17,6 +17,12 @@ from src.models.musicgen_handler import MusicGenHandler
 from src.services.cultural_mapper import CulturalMapper
 from src.services.prompt_builder import PromptBuilder
 from src.utils.audio_utils import save_audio
+
+# Import database
+from src import database
+
+# Import schemas
+from src.models.schemas import SongResponse, SongUpdate
 
 # ---------- APP SETUP ----------
 app = FastAPI(
@@ -122,7 +128,13 @@ def health():
 @app.post("/generate")
 async def generate(
     image: UploadFile = File(...),
-    duration: int = Form(15),
+    user_name: str = Form(...),
+    song_name: Optional[str] = Form(None),
+    genre: Optional[str] = Form(None),
+    tags: Optional[str] = Form(None),
+    duration: int = Form(30),
+    has_vocals: bool = Form(False),
+    has_lyrics: bool = Form(False),
     engine: Optional[str] = Form(None)  # "blip" | "mock" | None
 ):
     """
@@ -130,15 +142,25 @@ async def generate(
 
     Args:
         image: Image file
-        duration: Duration in seconds (15-60)
+        user_name: Name of the user creating the song
+        song_name: Name of the song (optional)
+        genre: Music genre (optional)
+        tags: Tags separated by commas (optional)
+        duration: Duration in seconds (15-100)
+        has_vocals: Whether the music has vocals
+        has_lyrics: Whether to generate lyrics
         engine: "mock" | "blip" | None (auto)
 
     Returns:
-        JSON with caption, prompt, audio_url, metadata
+        JSON with song data including audio_url
     """
     # Validate duration
-    if not 15 <= duration <= 60:
-        raise HTTPException(400, "Duration must be between 15 and 60 seconds")
+    if not 15 <= duration <= 100:
+        raise HTTPException(400, "Duration must be between 15 and 100 seconds")
+
+    # Validate user_name
+    if not user_name or not user_name.strip():
+        raise HTTPException(400, "user_name is required")
 
     # Read image
     img_bytes = await image.read()
@@ -201,19 +223,59 @@ async def generate(
         audio_data, sample_rate = generate_mock_audio(duration=duration)
         use_mock = True
 
-    # 6. Save audio
+    # 6. Save files
     file_id = uuid.uuid4().hex
+
+    # Save audio
     audio_filename = f"{file_id}.wav"
     audio_path = os.path.join(config.OUT_DIR, audio_filename)
     save_audio(audio_path, audio_data, sample_rate)
 
-    # 7. Return response
+    # Save image
+    image_filename = f"{file_id}.jpg"
+    image_path = os.path.join(config.OUT_DIR, image_filename)
+    with open(image_path, "wb") as f:
+        f.write(img_bytes)
+
+    # 7. Generate lyrics if requested
+    lyrics = None
+    if has_lyrics and has_vocals:
+        # TODO: Integrate with LLM for lyrics generation
+        # For now, use placeholder
+        lyrics = f"♪ Letra baseada em: {caption} ♪\n\n(Em breve: letras geradas por IA)"
+
+    # 8. Save to database
+    final_song_name = song_name if song_name and song_name.strip() else "Música Gerada"
+    song_data = {
+        "id": file_id,
+        "user_name": user_name.strip(),
+        "song_name": final_song_name,
+        "image_path": f"/audio/{image_filename}",
+        "audio_path": f"/audio/{audio_filename}",
+        "caption": caption,
+        "genre": genre or music_style.get("genre", "unknown"),
+        "tags": tags,
+        "duration": duration,
+        "has_vocals": has_vocals,
+        "has_lyrics": has_lyrics and has_vocals,
+        "lyrics": lyrics,
+    }
+
+    database.create_song(song_data)
+
+    # 9. Return response
     return JSONResponse({
+        "id": file_id,
+        "song_name": final_song_name,
         "caption": caption,
         "prompt": prompt,
         "duration": duration,
         "audio_url": f"/audio/{audio_filename}",
+        "image_url": f"/audio/{image_filename}",
         "engine": "mock" if use_mock else "blip",
+        "has_vocals": has_vocals,
+        "has_lyrics": has_lyrics and has_vocals,
+        "lyrics": lyrics,
         "metadata": {
             "genre": music_style.get("genre", "unknown"),
             "bpm": music_style.get("bpm", 0),
@@ -225,24 +287,170 @@ async def generate(
 @app.get("/audio/{filename}")
 def get_audio(filename: str):
     """
-    Serve audio file.
+    Serve audio/image file.
 
     Args:
-        filename: Audio filename (e.g., "abc123.wav")
+        filename: File filename (e.g., "abc123.wav" or "abc123.jpg")
 
     Returns:
-        WAV file
+        Audio or Image file
     """
-    audio_path = os.path.join(config.OUT_DIR, filename)
+    file_path = os.path.join(config.OUT_DIR, filename)
 
-    if not os.path.exists(audio_path):
-        raise HTTPException(404, "Audio file not found")
+    if not os.path.exists(file_path):
+        raise HTTPException(404, "File not found")
+
+    # Determine media type
+    if filename.endswith('.wav'):
+        media_type = "audio/wav"
+    elif filename.endswith('.mp3'):
+        media_type = "audio/mpeg"
+    elif filename.endswith('.jpg') or filename.endswith('.jpeg'):
+        media_type = "image/jpeg"
+    elif filename.endswith('.png'):
+        media_type = "image/png"
+    else:
+        media_type = "application/octet-stream"
 
     return FileResponse(
-        audio_path,
-        media_type="audio/wav",
+        file_path,
+        media_type=media_type,
         filename=filename
     )
+
+
+# ---------- SONGS ENDPOINTS ----------
+
+@app.get("/songs", response_model=List[SongResponse])
+def get_songs(
+    limit: int = Query(default=100, le=500),
+    offset: int = Query(default=0, ge=0)
+):
+    """
+    Get all songs with pagination.
+
+    Args:
+        limit: Maximum number of songs to return (max 500)
+        offset: Number of songs to skip
+
+    Returns:
+        List of songs
+    """
+    songs = database.get_all_songs(limit=limit, offset=offset)
+    return songs
+
+
+@app.get("/songs/user/{user_name}", response_model=List[SongResponse])
+def get_songs_by_user(
+    user_name: str,
+    limit: int = Query(default=100, le=500),
+    offset: int = Query(default=0, ge=0)
+):
+    """
+    Get all songs by a specific user.
+
+    Args:
+        user_name: Name of the user
+        limit: Maximum number of songs to return
+        offset: Number of songs to skip
+
+    Returns:
+        List of songs by the user
+    """
+    songs = database.get_songs_by_user(user_name=user_name, limit=limit, offset=offset)
+    return songs
+
+
+@app.get("/songs/{song_id}", response_model=SongResponse)
+def get_song(song_id: str):
+    """
+    Get a specific song by ID.
+
+    Args:
+        song_id: ID of the song
+
+    Returns:
+        Song data
+    """
+    song = database.get_song(song_id)
+
+    if not song:
+        raise HTTPException(404, "Song not found")
+
+    return song
+
+
+@app.put("/songs/{song_id}/like")
+def toggle_like(song_id: str, is_liked: bool = Query(...)):
+    """
+    Toggle like status for a song.
+
+    Args:
+        song_id: ID of the song
+        is_liked: New like status (true/false)
+
+    Returns:
+        Success message
+    """
+    success = database.update_song_like(song_id, is_liked)
+
+    if not success:
+        raise HTTPException(404, "Song not found")
+
+    return {"success": True, "is_liked": is_liked}
+
+
+@app.delete("/songs/{song_id}")
+def delete_song(song_id: str):
+    """
+    Delete a song.
+
+    Args:
+        song_id: ID of the song
+
+    Returns:
+        Success message
+    """
+    # Get song to find files
+    song = database.get_song(song_id)
+
+    if not song:
+        raise HTTPException(404, "Song not found")
+
+    # Delete from database
+    database.delete_song(song_id)
+
+    # Delete files (optional: keep files for backup)
+    # Uncomment if you want to delete files too
+    # if song.get("audio_path"):
+    #     audio_file = song["audio_path"].replace("/audio/", "")
+    #     audio_path = os.path.join(config.OUT_DIR, audio_file)
+    #     if os.path.exists(audio_path):
+    #         os.remove(audio_path)
+    #
+    # if song.get("image_path"):
+    #     image_file = song["image_path"].replace("/audio/", "")
+    #     image_path = os.path.join(config.OUT_DIR, image_file)
+    #     if os.path.exists(image_path):
+    #         os.remove(image_path)
+
+    return {"success": True, "message": "Song deleted successfully"}
+
+
+@app.get("/songs/search/query")
+def search_songs(q: str = Query(..., min_length=1), limit: int = Query(default=50, le=200)):
+    """
+    Search songs by name, user, tags, or caption.
+
+    Args:
+        q: Search query
+        limit: Maximum number of results
+
+    Returns:
+        List of matching songs
+    """
+    songs = database.search_songs(query=q, limit=limit)
+    return songs
 
 
 # ---------- RUN ----------
