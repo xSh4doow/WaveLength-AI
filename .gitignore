@@ -62,6 +62,20 @@ Back-End/output/
 *.wav
 *.mp3
 
+# Database
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+
+# Playwright
+Front-End/playwright-report/
+Front-End/test-results/
+
+# Internal docs (keep locally only)
+freshmemorycompact.md
+GUIA-*.md
+
 # Logs
 *.log
 
