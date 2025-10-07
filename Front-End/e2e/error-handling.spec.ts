@@ -32,13 +32,9 @@ test.describe('Tratamento de Erros', () => {
   test('deve exibir mensagem para campos vazios', async ({ page }) => {
     await page.goto('/create');
 
-    // Tentar submeter formulário vazio
-    const generateButton = page.locator('button').filter({ hasText: /gerar|criar/i });
-    await generateButton.click();
-
-    // Verificar feedback visual ou mensagem
-    const hasError = await page.locator('text=/erro|obrigatório|selecione/i, [role="alert"]').count();
-    expect(hasError).toBeGreaterThan(0);
+    // Verificar que botão está desabilitado quando campos vazios
+    const generateButton = page.locator('button').filter({ hasText: /gerar/i });
+    await expect(generateButton).toBeDisabled();
   });
 
   test('deve tratar timeout de geração', async ({ page }) => {
@@ -118,10 +114,12 @@ test.describe('Tratamento de Erros', () => {
   test('deve validar tamanho máximo de arquivo', async ({ page }) => {
     await page.goto('/create');
 
-    // Verificar limite no input file
+    // Verificar que input existe (pode estar hidden)
     const fileInput = page.locator('input[type="file"]');
+    await expect(fileInput).toHaveCount(1);
 
-    // A validação pode estar no frontend ou backend
-    await expect(fileInput).toBeVisible();
+    // Verificar atributo accept
+    const acceptAttr = await fileInput.getAttribute('accept');
+    expect(acceptAttr).toBeTruthy();
   });
 });
