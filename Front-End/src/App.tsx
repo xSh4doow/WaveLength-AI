@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { UserProvider } from "./contexts/UserContext";
 import { QueueProvider } from "./contexts/QueueContext";
 import { PlayerProvider } from "./contexts/PlayerContext";
+import { GlobalPlayer } from "./components/Player/GlobalPlayer";
 import Index from "./pages/Index";
 // import Auth from "./pages/Auth"; // TODO: Reativar autenticação futuramente
 import Dashboard from "./pages/Dashboard";
@@ -36,6 +37,8 @@ const App = () => (
                 {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                 <Route path="*" element={<NotFound />} />
               </Routes>
+              {/* Global Player - Visible on all pages */}
+              <GlobalPlayer />
             </BrowserRouter>
           </TooltipProvider>
         </PlayerProvider>

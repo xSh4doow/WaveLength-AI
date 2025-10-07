@@ -13,6 +13,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { generateMusic } from "@/services/api";
+import { useQueue } from "@/contexts/QueueContext";
+import { usePlayer } from "@/contexts/PlayerContext";
 
 const genres = [
   "Pop",
@@ -28,6 +30,8 @@ const genres = [
 
 export const Create = () => {
   const navigate = useNavigate();
+  const { setQueue } = useQueue();
+  const { setPlayerState } = usePlayer();
   const [userName, setUserName] = useState(localStorage.getItem("wavelength_user_name") || "");
   const [songName, setSongName] = useState("");
   const [genre, setGenre] = useState("");
@@ -115,19 +119,30 @@ export const Create = () => {
         description: `${result.caption}`,
       });
 
-      // Navigate to player with generated music data
-      navigate("/player/new", {
-        state: {
-          musicData: result,
-          songName: songName || "Música Gerada",
-          imagePreview: imagePreview,
-          userName: userName,
-          genre: genre,
-          tags: tags,
-          hasVocals: hasVocals === "vocal",
-          hasLyrics: hasLyrics && hasVocals === "vocal",
-        }
-      });
+      // Create Song object and add to queue
+      const newSong = {
+        id: result.id,
+        song_name: result.song_name || songName || "Música Gerada",
+        user_name: userName,
+        image_path: result.image_url,
+        audio_path: result.audio_url,
+        caption: result.caption,
+        genre: genre || result.metadata?.genre,
+        tags: tags,
+        duration: duration,
+        has_vocals: hasVocals === "vocal",
+        has_lyrics: result.has_lyrics || false,
+        lyrics: result.lyrics || null,
+        is_liked: false,
+        created_at: new Date().toISOString(),
+      };
+
+      // Add to queue and start playing
+      setQueue([newSong], 0);
+      setPlayerState("maximized");
+
+      // Navigate to dashboard
+      navigate("/dashboard");
     } catch (error) {
       console.error("Error generating music:", error);
       clearInterval(timerInterval);
