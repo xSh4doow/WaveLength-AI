@@ -1,0 +1,25 @@
+[MASTER]
+jobs=0
+persistent=yes
+
+[MESSAGES CONTROL]
+disable=C0111,  # missing-docstring
+        R0903,  # too-few-public-methods
+        C0103,  # invalid-name
+        W0212,  # protected-access (for tests)
+
+[FORMAT]
+max-line-length=100
+indent-string='    '
+
+[DESIGN]
+max-args=7
+max-attributes=10
+min-public-methods=1
+
+[REPORTS]
+output-format=colorized
+score=yes
+
+[BASIC]
+good-names=i,j,k,ex,_,id,db,df,ax,fig

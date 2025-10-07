@@ -1,0 +1,27 @@
+# Core Framework
+fastapi==0.116.1
+uvicorn[standard]==0.35.0
+python-multipart==0.0.9
+
+# ML Core
+torch==2.8.0
+transformers==4.44.2
+Pillow==10.4.0
+
+# Audio Processing
+scipy>=1.13.1
+numpy>=1.25.2
+
+# Utilities
+python-dotenv==1.0.0
+
+# Additional ML libraries
+accelerate==0.34.2
+safetensors==0.4.5
+einops==0.8.0
+sentencepiece==0.2.0
+
+# FASE 2/3 - Adicionar quando necessário
+# openai-clip==1.0.1
+# colorthief==0.2.1
+# opencv-python==4.8.1.78
