@@ -34,7 +34,12 @@ app = FastAPI(
 # CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production: restrict to specific origins
+    allow_origins=[
+        "https://wave-length-l708r2qg0-xsh4doows-projects.vercel.app",  # Vercel URL
+        "https://wavelength-ai.onrender.com",  # Render Backend URL
+        "http://localhost:8080",  # Development
+        "http://localhost:5173",  # Vite dev alternate port
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
