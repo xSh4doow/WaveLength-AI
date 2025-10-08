@@ -37,7 +37,8 @@ app.add_middleware(
     allow_origins=[
         "https://wave-length-ai.vercel.app",  # Production Vercel URL
         "https://wave-length-l708r2qg0-xsh4doows-projects.vercel.app",  # Vercel Preview URL
-        "https://wavelength-ai.onrender.com",  # Render Backend URL
+        "https://wavelength-ai.onrender.com",  # Render Backend URL (legacy)
+        "https://wavelength-backend-*.ondigitalocean.app",  # DigitalOcean App Platform
         "http://localhost:8080",  # Development
         "http://localhost:8081",  # Development
         "http://localhost:8082",  # Development
