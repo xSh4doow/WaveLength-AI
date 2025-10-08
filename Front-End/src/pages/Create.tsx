@@ -13,6 +13,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { generateMusic } from "@/services/api";
+import { useQueue } from "@/contexts/QueueContext";
+import { usePlayer } from "@/contexts/PlayerContext";
 
 const genres = [
   "Pop",
@@ -28,13 +30,21 @@ const genres = [
 
 export const Create = () => {
   const navigate = useNavigate();
+  const { setQueue } = useQueue();
+  const { setPlayerState } = usePlayer();
+  const [userName, setUserName] = useState(localStorage.getItem("wavelength_user_name") || "");
   const [songName, setSongName] = useState("");
   const [genre, setGenre] = useState("");
   const [tags, setTags] = useState("");
+  const [duration, setDuration] = useState(30); // 15-100 seconds
+  const [hasVocals, setHasVocals] = useState<"instrumental" | "vocal">("instrumental");
+  const [hasLyrics, setHasLyrics] = useState(false);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationStatus, setGenerationStatus] = useState("");
+  const [generationProgress, setGenerationProgress] = useState(0);
+  const [elapsedTime, setElapsedTime] = useState(0);
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -52,6 +62,16 @@ export const Create = () => {
   };
 
   const handleGenerate = async () => {
+    // Validations
+    if (!userName.trim()) {
+      toast({
+        title: "Erro",
+        description: "Por favor, informe seu nome",
+        variant: "destructive",
+      });
+      return;
+    }
+
     if (!imageFile) {
       toast({
         title: "Erro",
@@ -61,31 +81,72 @@ export const Create = () => {
       return;
     }
 
+    // Save userName to localStorage
+    localStorage.setItem("wavelength_user_name", userName);
+
     setIsGenerating(true);
-    setGenerationStatus("Analisando sua foto...");
+    setGenerationStatus("Iniciando geração...");
+    setGenerationProgress(0);
+    setElapsedTime(0);
+
+    // Timer for elapsed time
+    const timerInterval = setInterval(() => {
+      setElapsedTime((prev) => prev + 1);
+    }, 1000);
+
+    // Simulated progress (real progress will come from backend in future)
+    const progressInterval = setInterval(() => {
+      setGenerationProgress((prev) => {
+        if (prev >= 90) return prev;
+        return prev + Math.random() * 5;
+      });
+    }, 500);
 
     try {
-      // Call backend API
-      const duration = 15; // Default duration
+      setGenerationStatus("Analisando sua foto...");
+      setGenerationProgress(10);
+
+      // Call backend API with new parameters
       const result = await generateMusic(imageFile, duration);
 
+      setGenerationProgress(100);
       setGenerationStatus("Música gerada!");
+      clearInterval(timerInterval);
+      clearInterval(progressInterval);
 
       toast({
         title: "Música gerada!",
         description: `${result.caption}`,
       });
 
-      // Navigate to player with generated music data
-      navigate("/player/new", {
-        state: {
-          musicData: result,
-          songName: songName || "Música Gerada",
-          imagePreview: imagePreview
-        }
-      });
+      // Create Song object and add to queue
+      const newSong = {
+        id: result.id,
+        song_name: result.song_name || songName || "Música Gerada",
+        user_name: userName,
+        image_path: result.image_url,
+        audio_path: result.audio_url,
+        caption: result.caption,
+        genre: genre || result.metadata?.genre,
+        tags: tags,
+        duration: duration,
+        has_vocals: hasVocals === "vocal",
+        has_lyrics: result.has_lyrics || false,
+        lyrics: result.lyrics || null,
+        is_liked: false,
+        created_at: new Date().toISOString(),
+      };
+
+      // Add to queue and start playing
+      setQueue([newSong], 0);
+      setPlayerState("maximized");
+
+      // Navigate to dashboard
+      navigate("/dashboard");
     } catch (error) {
       console.error("Error generating music:", error);
+      clearInterval(timerInterval);
+      clearInterval(progressInterval);
       setIsGenerating(false);
       toast({
         title: "Erro na geração",
@@ -96,15 +157,48 @@ export const Create = () => {
   };
 
   if (isGenerating) {
+    const formatTime = (seconds: number) => {
+      const mins = Math.floor(seconds / 60);
+      const secs = seconds % 60;
+      return `${mins}:${secs.toString().padStart(2, '0')}`;
+    };
+
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="absolute inset-0 gradient-hero" />
-        <div className="relative z-10 text-center space-y-6">
-          <div className="w-24 h-24 mx-auto rounded-full gradient-primary animate-pulse" />
-          <div className="space-y-2">
+        <div className="relative z-10 text-center space-y-8 max-w-md mx-auto px-4">
+          {/* Animated circles */}
+          <div className="relative w-32 h-32 mx-auto">
+            <div className="absolute inset-0 rounded-full gradient-primary animate-pulse" />
+            <div className="absolute inset-4 rounded-full bg-background flex items-center justify-center">
+              <Music2 className="w-12 h-12 text-primary animate-pulse" />
+            </div>
+          </div>
+
+          {/* Status and Progress */}
+          <div className="space-y-4">
             <h2 className="text-3xl font-bold">Gerando sua música...</h2>
-            <p className="text-muted-foreground animate-pulse">
+            <p className="text-muted-foreground text-lg animate-pulse">
               {generationStatus}
+            </p>
+
+            {/* Progress Bar */}
+            <div className="space-y-2">
+              <div className="w-full h-3 bg-muted rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-primary to-accent transition-all duration-500 ease-out"
+                  style={{ width: `${generationProgress}%` }}
+                />
+              </div>
+              <div className="flex justify-between text-sm text-muted-foreground">
+                <span>{Math.round(generationProgress)}%</span>
+                <span>{formatTime(elapsedTime)}</span>
+              </div>
+            </div>
+
+            {/* Additional info */}
+            <p className="text-sm text-muted-foreground mt-4">
+              Isso pode levar de 30 a 60 segundos...
             </p>
           </div>
         </div>
@@ -192,6 +286,17 @@ export const Create = () => {
               {/* Form Section */}
               <div className="space-y-6">
                 <div className="space-y-2">
+                  <Label htmlFor="userName">Seu Nome *</Label>
+                  <Input
+                    id="userName"
+                    placeholder="Digite seu nome..."
+                    value={userName}
+                    onChange={(e) => setUserName(e.target.value)}
+                    required
+                  />
+                </div>
+
+                <div className="space-y-2">
                   <Label htmlFor="songName">Nome da Música</Label>
                   <Input
                     id="songName"
@@ -234,12 +339,91 @@ export const Create = () => {
                   </p>
                 </div>
 
+                <div className="space-y-2">
+                  <Label htmlFor="duration">
+                    Duração * <span className="text-muted-foreground">({duration}s)</span>
+                  </Label>
+                  <input
+                    id="duration"
+                    type="range"
+                    min="15"
+                    max="100"
+                    value={duration}
+                    onChange={(e) => setDuration(Number(e.target.value))}
+                    className="w-full h-2 bg-muted rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary [&::-webkit-slider-thumb]:cursor-pointer"
+                    style={{
+                      background: `linear-gradient(to right, hsl(var(--primary)) 0%, hsl(var(--primary)) ${((duration - 15) / 85) * 100}%, hsl(var(--muted)) ${((duration - 15) / 85) * 100}%, hsl(var(--muted)) 100%)`
+                    }}
+                  />
+                  <div className="flex justify-between text-xs text-muted-foreground">
+                    <span>15s</span>
+                    <span>100s (1min 40s)</span>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Tipo de Música *</Label>
+                  <div className="flex gap-4">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setHasVocals("instrumental");
+                        setHasLyrics(false);
+                      }}
+                      className={`flex-1 p-4 rounded-lg border-2 transition-colors ${
+                        hasVocals === "instrumental"
+                          ? "border-primary bg-primary/10"
+                          : "border-border hover:border-primary/50"
+                      }`}
+                    >
+                      <div className="font-semibold">🎹 Instrumental</div>
+                      <div className="text-xs text-muted-foreground mt-1">
+                        Apenas música
+                      </div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setHasVocals("vocal")}
+                      className={`flex-1 p-4 rounded-lg border-2 transition-colors ${
+                        hasVocals === "vocal"
+                          ? "border-primary bg-primary/10"
+                          : "border-border hover:border-primary/50"
+                      }`}
+                    >
+                      <div className="font-semibold">🎤 Com Vocal</div>
+                      <div className="text-xs text-muted-foreground mt-1">
+                        Com voz
+                      </div>
+                    </button>
+                  </div>
+                </div>
+
+                {hasVocals === "vocal" && (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        id="hasLyrics"
+                        checked={hasLyrics}
+                        onChange={(e) => setHasLyrics(e.target.checked)}
+                        className="w-4 h-4 rounded border-border text-primary focus:ring-primary"
+                      />
+                      <Label htmlFor="hasLyrics" className="cursor-pointer">
+                        Gerar letra para a música
+                      </Label>
+                    </div>
+                    <p className="text-sm text-muted-foreground ml-6">
+                      A letra será gerada com base na imagem e no contexto
+                    </p>
+                  </div>
+                )}
+
                 <Button
                   variant="hero"
                   size="lg"
                   className="w-full"
                   onClick={handleGenerate}
-                  disabled={!imagePreview}
+                  disabled={!imagePreview || !userName.trim()}
                 >
                   <Wand2 className="w-5 h-5 mr-2" />
                   Gerar Música

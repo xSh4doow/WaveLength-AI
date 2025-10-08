@@ -4,7 +4,7 @@
 
 **Transforme fotografias em música original usando Inteligência Artificial**
 
-[**Começar**](#-quick-start) • [**Documentação**](#-documentação) • [**Deploy**](#-deploy) • [**Roadmap**](#-roadmap)
+[**Começar**](#-quick-start) • [**Documentação**](#-documentação) • [**Roadmap**](#-roadmap)
 
 ---
 
@@ -240,71 +240,10 @@ npm run e2e:ui   # Interface visual
 
 ## 📚 Documentação
 
-### Guias Completos
-
-- **[GUIA-LOCAL.md](./GUIA-LOCAL.md)** - Como rodar localmente (passo a passo detalhado)
-- **[GUIA-DEPLOY.md](./GUIA-DEPLOY.md)** - Como fazer deploy (4 plataformas)
-- **[Instrucoes e Doc.mD](./Instrucoes%20e%20Doc.mD)** - Arquitetura técnica detalhada
-
 ### README Específicos
 
 - **[Back-End/README.md](./Back-End/README.md)** - Documentação do backend
 - **[Front-End/README.md](./Front-End/README.md)** - Documentação do frontend
-
----
-
-## 🌐 Deploy
-
-### Opções de Deploy
-
-| Plataforma | Backend | Frontend | Dificuldade | Custo |
-|------------|---------|----------|-------------|-------|
-| **Render** | ✅ | ✅ | 🟢 Fácil | Grátis |
-| **Vercel + Render** | ✅ | ✅ | 🟡 Médio | Grátis |
-| **Railway** | ✅ | ✅ | 🟢 Fácil | $5/mês |
-| **Hugging Face** | ✅ | ✅ | 🟢 Fácil | Grátis |
-
-### Deploy Rápido (Render)
-
-#### Backend
-
-1. Acesse [render.com](https://render.com)
-2. New Web Service → Connect GitHub
-3. Configure:
-   - **Build:** `pip install -r Back-End/requirements.txt`
-   - **Start:** `cd Back-End && uvicorn src.main:app --host 0.0.0.0 --port $PORT`
-4. Deploy!
-
-#### Frontend
-
-1. New Static Site → Connect GitHub
-2. Configure:
-   - **Build:** `cd Front-End && npm install && npm run build`
-   - **Publish:** `Front-End/dist`
-   - **Env:** `VITE_API_URL=https://seu-backend.onrender.com`
-3. Deploy!
-
-**Veja o guia completo:** [GUIA-DEPLOY.md](./GUIA-DEPLOY.md)
-
----
-
-## 🛠️ Scripts Auxiliares
-
-### `scripts/dev.py` - Desenvolvimento
-
-Roda backend + frontend simultaneamente:
-
-```bash
-python scripts/dev.py
-```
-
-### `scripts/test.py` - Testes
-
-Roda todos os testes (backend + frontend):
-
-```bash
-python scripts/test.py
-```
 
 ---
 
@@ -334,15 +273,6 @@ python scripts/test.py
 - [ ] Biblioteca de músicas por usuário
 - [ ] Download de áudio
 - [ ] Compartilhamento de músicas
-
-### 🚀 Fase 4 - Produção
-
-- [ ] CI/CD (GitHub Actions)
-- [ ] Monitoramento (Sentry)
-- [ ] Analytics (Google Analytics)
-- [ ] CDN para áudios (Cloudflare)
-- [ ] Cache (Redis)
-- [ ] API pública com rate limiting
 
 ---
 
@@ -405,16 +335,6 @@ pip install torch torchvision torchaudio --index-url https://download.pytorch.or
 DEVICE = "cpu"
 ```
 
-**Mais soluções:** [GUIA-LOCAL.md](./GUIA-LOCAL.md)
-
----
-
-## 📞 Suporte
-
-- **Issues:** [GitHub Issues](https://github.com/seu-usuario/wavelength/issues)
-- **Documentação:** [Wiki](https://github.com/seu-usuario/wavelength/wiki)
-- **Email:** contato@wavelength.com (se aplicável)
-
 ---
 
 ## 📜 Licença
@@ -430,12 +350,6 @@ Este projeto está licenciado sob a Licença MIT - veja o arquivo [LICENSE](LICE
 - [shadcn/ui](https://ui.shadcn.com/) - Componentes UI
 - [FastAPI](https://fastapi.tiangolo.com/) - Framework backend
 - [Vite](https://vitejs.dev/) - Build tool frontend
-
----
-
-## 🌟 Showcase
-
-*Em breve: screenshots, demos e exemplos de músicas geradas!*
 
 ---
 

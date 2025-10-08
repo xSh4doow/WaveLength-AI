@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Music2, Play, Search, Filter } from "lucide-react";
+import { Music2, Play, Search, Loader2 } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -10,74 +10,95 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import demoPhoto from "@/assets/demo-photo.jpg";
-
-// Mock data - biblioteca global
-const allSongs = [
-  {
-    id: "1",
-    name: "Sunset Dreams",
-    image: demoPhoto,
-    creator: "Usuário Demo",
-    createdAt: "2024-01-15",
-    duration: "3:24",
-    genre: "Ambient",
-  },
-  {
-    id: "2",
-    name: "Mountain Vibes",
-    image: demoPhoto,
-    creator: "João Silva",
-    createdAt: "2024-01-14",
-    duration: "2:45",
-    genre: "Rock",
-  },
-  {
-    id: "3",
-    name: "Ocean Waves",
-    image: demoPhoto,
-    creator: "Maria Santos",
-    createdAt: "2024-01-13",
-    duration: "4:12",
-    genre: "Eletrônica",
-  },
-  {
-    id: "4",
-    name: "City Lights",
-    image: demoPhoto,
-    creator: "Pedro Costa",
-    createdAt: "2024-01-12",
-    duration: "3:56",
-    genre: "Lo-fi",
-  },
-  {
-    id: "5",
-    name: "Forest Path",
-    image: demoPhoto,
-    creator: "Ana Paula",
-    createdAt: "2024-01-11",
-    duration: "5:18",
-    genre: "Clássica",
-  },
-  {
-    id: "6",
-    name: "Rainy Day",
-    image: demoPhoto,
-    creator: "Carlos Lima",
-    createdAt: "2024-01-10",
-    duration: "2:33",
-    genre: "Jazz",
-  },
-];
+import { getSongsByUser, getAudioUrl, type Song } from "@/services/api";
+import { useUser } from "@/contexts/UserContext";
+import { useQueue } from "@/contexts/QueueContext";
+import { usePlayer } from "@/contexts/PlayerContext";
 
 export const Library = () => {
   const navigate = useNavigate();
+  const { userName, clearUser } = useUser();
+  const { setQueue } = useQueue();
+  const { setPlayerState } = usePlayer();
+
+  const [songs, setSongs] = useState<Song[]>([]);
+  const [filteredSongs, setFilteredSongs] = useState<Song[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [filterGenre, setFilterGenre] = useState("all");
   const [sortBy, setSortBy] = useState("recent");
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Load songs from backend
+  useEffect(() => {
+    if (!userName) {
+      navigate("/");
+      return;
+    }
+
+    const loadSongs = async () => {
+      try {
+        setIsLoading(true);
+        setError(null);
+        const userSongs = await getSongsByUser(userName);
+        setSongs(userSongs);
+        setFilteredSongs(userSongs);
+      } catch (err) {
+        console.error("Error loading songs:", err);
+        setError("Erro ao carregar músicas");
+        setSongs([]);
+        setFilteredSongs([]);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadSongs();
+  }, [userName, navigate]);
+
+  // Filter and sort songs
+  useEffect(() => {
+    let result = [...songs];
+
+    // Search filter
+    if (searchQuery) {
+      result = result.filter(
+        (song) =>
+          song.song_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          song.caption?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          song.tags?.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+    }
+
+    // Genre filter
+    if (filterGenre !== "all") {
+      result = result.filter((song) => song.genre?.toLowerCase() === filterGenre);
+    }
+
+    // Sort
+    if (sortBy === "recent") {
+      result.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    } else if (sortBy === "oldest") {
+      result.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+    }
+
+    setFilteredSongs(result);
+  }, [songs, searchQuery, filterGenre, sortBy]);
 
   const handleLogout = () => {
+    clearUser();
     navigate("/");
+  };
+
+  const handlePlaySong = (song: Song) => {
+    setQueue([song], 0);
+    setPlayerState("maximized");
+  };
+
+  const formatDuration = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, "0")}`;
   };
 
   return (
@@ -171,46 +192,97 @@ export const Library = () => {
             </div>
           </div>
 
+          {/* Loading State */}
+          {isLoading && (
+            <div className="flex items-center justify-center py-20">
+              <div className="text-center space-y-4">
+                <Loader2 className="w-12 h-12 animate-spin mx-auto text-primary" />
+                <p className="text-muted-foreground">Carregando suas músicas...</p>
+              </div>
+            </div>
+          )}
+
+          {/* Error State */}
+          {error && !isLoading && (
+            <div className="flex items-center justify-center py-20">
+              <div className="text-center space-y-4">
+                <p className="text-destructive">{error}</p>
+                <Button onClick={() => window.location.reload()}>Tentar Novamente</Button>
+              </div>
+            </div>
+          )}
+
+          {/* Empty State */}
+          {!isLoading && !error && filteredSongs.length === 0 && (
+            <div className="flex items-center justify-center py-20">
+              <div className="text-center space-y-4">
+                <Music2 className="w-16 h-16 mx-auto text-muted-foreground" />
+                <p className="text-muted-foreground">
+                  {searchQuery || filterGenre !== "all"
+                    ? "Nenhuma música encontrada com esses filtros"
+                    : "Você ainda não criou nenhuma música"}
+                </p>
+                {!searchQuery && filterGenre === "all" && (
+                  <Button onClick={() => navigate("/create")}>Criar Primeira Música</Button>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Songs Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-            {allSongs.map((song) => (
-              <div
-                key={song.id}
-                className="glass-effect rounded-xl p-4 hover:scale-105 transition-transform group cursor-pointer"
-                onClick={() => navigate(`/player/${song.id}`)}
-              >
-                <div className="aspect-square rounded-lg overflow-hidden mb-4 relative">
-                  <img
-                    src={song.image}
-                    alt={song.name}
-                    className="w-full h-full object-cover"
-                  />
-                  <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                    <div className="w-16 h-16 rounded-full bg-primary flex items-center justify-center">
-                      <Play className="w-8 h-8 text-primary-foreground ml-1" />
+          {!isLoading && !error && filteredSongs.length > 0 && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+              {filteredSongs.map((song) => {
+                const imageUrl = song.image_path ? getAudioUrl(song.image_path) : "";
+
+                return (
+                  <div
+                    key={song.id}
+                    className="glass-effect rounded-xl p-4 hover:scale-105 transition-transform group cursor-pointer"
+                    onClick={() => handlePlaySong(song)}
+                  >
+                    <div className="aspect-square rounded-lg overflow-hidden mb-4 relative">
+                      {imageUrl ? (
+                        <img
+                          src={imageUrl}
+                          alt={song.song_name}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-full h-full bg-gradient-to-br from-primary to-accent" />
+                      )}
+                      <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                        <div className="w-16 h-16 rounded-full bg-primary flex items-center justify-center">
+                          <Play className="w-8 h-8 text-primary-foreground ml-1" />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <h3 className="font-semibold text-lg truncate">
+                        {song.song_name}
+                      </h3>
+                      {song.caption && (
+                        <p className="text-xs text-muted-foreground truncate">
+                          {song.caption}
+                        </p>
+                      )}
+                      <div className="flex items-center justify-between text-sm">
+                        {song.genre && (
+                          <span className="px-2 py-1 rounded-full glass-effect text-xs">
+                            {song.genre}
+                          </span>
+                        )}
+                        <span className="text-muted-foreground">
+                          {formatDuration(song.duration)}
+                        </span>
+                      </div>
                     </div>
                   </div>
-                </div>
-
-                <div className="space-y-2">
-                  <h3 className="font-semibold text-lg truncate">
-                    {song.name}
-                  </h3>
-                  <p className="text-sm text-muted-foreground truncate">
-                    Por {song.creator}
-                  </p>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="px-2 py-1 rounded-full glass-effect text-xs">
-                      {song.genre}
-                    </span>
-                    <span className="text-muted-foreground">
-                      {song.duration}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </main>
     </div>
