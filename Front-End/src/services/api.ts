@@ -55,11 +55,27 @@ export interface Song {
  */
 export async function generateMusic(
   imageFile: File,
-  duration: number = 15
+  options: {
+    userName: string;
+    songName?: string;
+    genre?: string;
+    tags?: string;
+    duration?: number;
+    hasVocals?: boolean;
+    hasLyrics?: boolean;
+    engine?: string;
+  }
 ): Promise<GenerateMusicResponse> {
   const formData = new FormData();
   formData.append('image', imageFile);
-  formData.append('duration', duration.toString());
+  formData.append('user_name', options.userName);
+  if (options.songName) formData.append('song_name', options.songName);
+  if (options.genre) formData.append('genre', options.genre);
+  if (options.tags) formData.append('tags', options.tags);
+  formData.append('duration', (options.duration || 15).toString());
+  formData.append('has_vocals', (options.hasVocals || false).toString());
+  formData.append('has_lyrics', (options.hasLyrics || false).toString());
+  if (options.engine) formData.append('engine', options.engine);
 
   const response = await fetch(`${API_BASE_URL}/generate`, {
     method: 'POST',

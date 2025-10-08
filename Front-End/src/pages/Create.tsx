@@ -15,6 +15,7 @@ import {
 import { generateMusic } from "@/services/api";
 import { useQueue } from "@/contexts/QueueContext";
 import { usePlayer } from "@/contexts/PlayerContext";
+import { useUser } from "@/contexts/UserContext";
 
 const genres = [
   "Pop",
@@ -32,7 +33,7 @@ export const Create = () => {
   const navigate = useNavigate();
   const { setQueue } = useQueue();
   const { setPlayerState } = usePlayer();
-  const [userName, setUserName] = useState(localStorage.getItem("wavelength_user_name") || "");
+  const { userName, setUserName } = useUser();
   const [songName, setSongName] = useState("");
   const [genre, setGenre] = useState("");
   const [tags, setTags] = useState("");
@@ -107,7 +108,15 @@ export const Create = () => {
       setGenerationProgress(10);
 
       // Call backend API with new parameters
-      const result = await generateMusic(imageFile, duration);
+      const result = await generateMusic(imageFile, {
+        userName,
+        songName: songName || undefined,
+        genre: genre || undefined,
+        tags: tags || undefined,
+        duration,
+        hasVocals: hasVocals === "vocal",
+        hasLyrics,
+      });
 
       setGenerationProgress(100);
       setGenerationStatus("Música gerada!");
