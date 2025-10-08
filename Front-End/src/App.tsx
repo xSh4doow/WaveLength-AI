@@ -13,6 +13,7 @@ import Dashboard from "./pages/Dashboard";
 import Create from "./pages/Create";
 import Player from "./pages/Player";
 import Library from "./pages/Library";
+import Play from "./pages/Play";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -34,6 +35,7 @@ const App = () => (
                 <Route path="/create" element={<Create />} />
                 <Route path="/player/:id" element={<Player />} />
                 <Route path="/library" element={<Library />} />
+                <Route path="/play/:id" element={<Play />} />
                 {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                 <Route path="*" element={<NotFound />} />
               </Routes>
