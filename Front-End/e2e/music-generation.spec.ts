@@ -114,3 +114,46 @@ test.describe('Geração de Música', () => {
     }
   });
 });
+
+  test('deve gerar música de 30s instrumental', async ({ page }) => {
+    await page.goto('/create');
+
+    // Mock da API com dados atualizados
+    await page.route('**/generate', async route => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          id: 'test-123',
+          song_name: 'Test Song',
+          audio_url: '/audio/test-123.wav',
+          image_url: '/audio/test-123.jpg',
+          caption: 'A beautiful landscape',
+          duration: 30,  // 30s
+          has_vocals: false,  // Instrumental only
+          has_lyrics: false,
+          metadata: {
+            genre: 'ambient',
+            bpm: 90,
+            mood: 'calm'
+          }
+        })
+      });
+    });
+
+    // Upload fake image
+    const buffer = Buffer.from('fake-image-data');
+    const fileInput = page.locator('input[type="file"]');
+    await fileInput.setInputFiles({
+      name: 'test-image.jpg',
+      mimeType: 'image/jpeg',
+      buffer: buffer,
+    });
+
+    await page.waitForTimeout(500);
+
+    // Verificar que não há opções de vocal/letras
+    const page Content = await page.content();
+    expect(pageContent.toLowerCase()).not.toContain('vocal');
+    expect(pageContent.toLowerCase()).not.toContain('letra');
+  });

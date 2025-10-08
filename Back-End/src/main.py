@@ -35,7 +35,8 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "https://wave-length-l708r2qg0-xsh4doows-projects.vercel.app",  # Vercel URL
+        "https://wave-length-ai.vercel.app",  # Production Vercel URL
+        "https://wave-length-l708r2qg0-xsh4doows-projects.vercel.app",  # Vercel Preview URL
         "https://wavelength-ai.onrender.com",  # Render Backend URL
         "http://localhost:8080",  # Development
         "http://localhost:8081",  # Development
@@ -120,13 +121,22 @@ def health():
         print(f"[health] Error initializing AI: {repr(e)}")
 
     device = "cpu"
+    max_duration = 30
+    backend = "unknown"
+
     if blip_handler:
         device = blip_handler.device
+
+    if musicgen_handler:
+        max_duration = musicgen_handler.get_max_duration()
+        backend = "audiocraft" if musicgen_handler.using_audiocraft else "transformers"
 
     return {
         "status": "ok",
         "ai_ready": AI_READY,
         "device": device,
+        "musicgen_backend": backend,
+        "max_duration": max_duration,
         "models_loaded": {
             "blip": blip_handler is not None and blip_handler.is_loaded() if blip_handler else False,
             "musicgen": musicgen_handler is not None and musicgen_handler.is_loaded() if musicgen_handler else False
@@ -163,9 +173,17 @@ async def generate(
     Returns:
         JSON with song data including audio_url
     """
+    # Get max duration from musicgen handler (30s for audiocraft, 15s for transformers)
+    max_duration = 30
+    if musicgen_handler and musicgen_handler.is_loaded():
+        max_duration = musicgen_handler.get_max_duration()
+
     # Validate duration
     if not 15 <= duration <= 100:
         raise HTTPException(400, "Duration must be between 15 and 100 seconds")
+
+    # Clamp to backend's max duration
+    duration = min(duration, max_duration)
 
     # Validate user_name
     if not user_name or not user_name.strip():
@@ -209,8 +227,13 @@ async def generate(
             music_style = cultural_mapper.map_caption_to_style(caption)
             print(f"[generate] Style: {music_style['genre']} - {music_style['subgenre']}")
 
-            # 4. Build prompt
-            prompt = prompt_builder.build(caption, music_style)
+            # 4. Build prompt (pass user genre and tags if provided)
+            prompt = prompt_builder.build(
+                caption=caption,
+                music_style=music_style,
+                user_genre=genre if genre else None,
+                user_tags=tags if tags else None
+            )
             print(f"[generate] Prompt: {prompt}")
 
             # 5. Generate audio with MusicGen

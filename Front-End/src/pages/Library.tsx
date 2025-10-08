@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Music2, Play, Search, Loader2 } from "lucide-react";
+import { Music2, Play, Search, Loader2, Heart } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -250,6 +250,12 @@ export const Library = () => {
                         />
                       ) : (
                         <div className="w-full h-full bg-gradient-to-br from-primary to-accent" />
+                      )}
+                      {/* Favorite indicator */}
+                      {song.is_liked && (
+                        <div className="absolute top-2 right-2 w-8 h-8 rounded-full bg-primary/90 backdrop-blur-sm flex items-center justify-center">
+                          <Heart className="w-4 h-4 text-primary-foreground fill-current" />
+                        </div>
                       )}
                       <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                         <div className="w-16 h-16 rounded-full bg-primary flex items-center justify-center">

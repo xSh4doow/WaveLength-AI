@@ -28,12 +28,17 @@ class TestPromptBuilder:
         prompt = builder.build(caption, sample_style)
 
         assert "tropical house chill" in prompt
-        assert "relaxing and warm atmosphere" in prompt
+        assert "relaxing and warm" in prompt
         assert "85 BPM" in prompt
         assert "soft synths" in prompt
         assert "light percussion" in prompt
         assert "warm pads" in prompt
-        assert "inspired by: a beach at sunset" in prompt
+        assert "inspired by scene: a beach at sunset" in prompt
+        # Check for 30s structure
+        assert "structured 30-second composition" in prompt
+        assert "clear intro" in prompt
+        assert "climax" in prompt
+        assert "outro" in prompt
 
     def test_build_without_subgenre(self, builder):
         """Test building prompt without subgenre"""
@@ -70,20 +75,20 @@ class TestPromptBuilder:
         caption = "test"
         prompt = builder.build(caption, style)
 
-        assert "soft instruments" in prompt  # Default fallback
+        assert "synthesizers, pads" in prompt  # Default fallback
 
     def test_prompt_format_correct(self, builder, sample_style):
         """Test that prompt follows correct template format"""
         caption = "beautiful landscape"
         prompt = builder.build(caption, sample_style)
 
-        # Format: {genre} {subgenre}, {mood} atmosphere, {bpm} BPM, {instrumentation}, inspired by: {caption}
+        # Format includes: genre, mood, BPM, instrumentation, structure, inspiration
         parts = prompt.split(", ")
 
-        assert len(parts) >= 4
-        assert "atmosphere" in parts[1]
-        assert "BPM" in parts[2]
-        assert "inspired by:" in prompt
+        assert len(parts) >= 8  # More parts now with structure
+        assert "mood" in prompt
+        assert "BPM" in prompt
+        assert "inspired by scene:" in prompt
 
     def test_special_characters_in_caption(self, builder, sample_style):
         """Test handling special characters in caption"""
@@ -91,7 +96,7 @@ class TestPromptBuilder:
         prompt = builder.build(caption, sample_style)
 
         assert caption in prompt
-        assert "inspired by: " + caption in prompt
+        assert "inspired by scene: " + caption in prompt
 
     def test_long_instrumentation_list(self, builder):
         """Test handling long instrumentation list"""
@@ -120,3 +125,32 @@ class TestPromptBuilder:
 
         assert "ambient" in prompt
         assert "90 BPM" in prompt
+
+    def test_user_genre_priority(self, builder):
+        """Test that user_genre takes priority over CulturalMapper"""
+        style = {
+            "genre": "ambient",
+            "subgenre": "cinematic",
+            "bpm": 90,
+            "mood": "calm",
+            "instrumentation": ["pads"]
+        }
+        user_genre = "rock"
+        caption = "test"
+        prompt = builder.build(caption, style, user_genre=user_genre)
+
+        # User genre should be used
+        assert "rock" in prompt
+        # CulturalMapper genre should NOT be used
+        assert "ambient cinematic" not in prompt
+        # But CulturalMapper mood and BPM should still be used
+        assert "calm mood" in prompt
+        assert "90 BPM" in prompt
+
+    def test_user_tags_included(self, builder, sample_style):
+        """Test that user tags are included in prompt"""
+        caption = "test"
+        user_tags = "energetic, happy, uplifting"
+        prompt = builder.build(caption, sample_style, user_tags=user_tags)
+
+        assert "energetic, happy, uplifting" in prompt

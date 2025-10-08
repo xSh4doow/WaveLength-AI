@@ -36,6 +36,7 @@ interface QueueContextType {
   removeFromQueue: (index: number) => void;
   clearQueue: () => void;
   reorderQueue: (fromIndex: number, toIndex: number) => void;
+  updateSongInQueue: (songId: string, updates: Partial<Song>) => void;
 
   // Playback actions
   playNext: () => void;
@@ -185,6 +186,14 @@ export function QueueProvider({ children }: { children: ReactNode }) {
     });
   };
 
+  const updateSongInQueue = (songId: string, updates: Partial<Song>) => {
+    setQueueState((prev) =>
+      prev.map((song) =>
+        song.id === songId ? { ...song, ...updates } : song
+      )
+    );
+  };
+
   return (
     <QueueContext.Provider
       value={{
@@ -198,6 +207,7 @@ export function QueueProvider({ children }: { children: ReactNode }) {
         removeFromQueue,
         clearQueue,
         reorderQueue,
+        updateSongInQueue,
         playNext,
         playPrevious,
         playAt,

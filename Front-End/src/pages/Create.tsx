@@ -37,9 +37,6 @@ export const Create = () => {
   const [songName, setSongName] = useState("");
   const [genre, setGenre] = useState("");
   const [tags, setTags] = useState("");
-  const [duration, setDuration] = useState(30); // 15-100 seconds
-  const [hasVocals, setHasVocals] = useState<"instrumental" | "vocal">("instrumental");
-  const [hasLyrics, setHasLyrics] = useState(false);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -107,15 +104,15 @@ export const Create = () => {
       setGenerationStatus("Analisando sua foto...");
       setGenerationProgress(10);
 
-      // Call backend API with new parameters
+      // Call backend API (fixed 30s instrumental)
       const result = await generateMusic(imageFile, {
         userName,
         songName: songName || undefined,
         genre: genre || undefined,
         tags: tags || undefined,
-        duration,
-        hasVocals: hasVocals === "vocal",
-        hasLyrics,
+        duration: 30,
+        hasVocals: false,
+        hasLyrics: false,
       });
 
       setGenerationProgress(100);
@@ -138,10 +135,10 @@ export const Create = () => {
         caption: result.caption,
         genre: genre || result.metadata?.genre,
         tags: tags,
-        duration: duration,
-        has_vocals: hasVocals === "vocal",
-        has_lyrics: result.has_lyrics || false,
-        lyrics: result.lyrics || null,
+        duration: 30,
+        has_vocals: false,
+        has_lyrics: false,
+        lyrics: null,
         is_liked: false,
         created_at: new Date().toISOString(),
       };
@@ -348,84 +345,11 @@ export const Create = () => {
                   </p>
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="duration">
-                    Duração * <span className="text-muted-foreground">({duration}s)</span>
-                  </Label>
-                  <input
-                    id="duration"
-                    type="range"
-                    min="15"
-                    max="100"
-                    value={duration}
-                    onChange={(e) => setDuration(Number(e.target.value))}
-                    className="w-full h-2 bg-muted rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary [&::-webkit-slider-thumb]:cursor-pointer"
-                    style={{
-                      background: `linear-gradient(to right, hsl(var(--primary)) 0%, hsl(var(--primary)) ${((duration - 15) / 85) * 100}%, hsl(var(--muted)) ${((duration - 15) / 85) * 100}%, hsl(var(--muted)) 100%)`
-                    }}
-                  />
-                  <div className="flex justify-between text-xs text-muted-foreground">
-                    <span>15s</span>
-                    <span>100s (1min 40s)</span>
-                  </div>
+                <div className="p-4 rounded-lg glass-effect">
+                  <p className="text-sm text-muted-foreground">
+                    <strong>📝 Nota:</strong> Todas as músicas são geradas como <strong>instrumental de 30 segundos</strong>
+                  </p>
                 </div>
-
-                <div className="space-y-2">
-                  <Label>Tipo de Música *</Label>
-                  <div className="flex gap-4">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setHasVocals("instrumental");
-                        setHasLyrics(false);
-                      }}
-                      className={`flex-1 p-4 rounded-lg border-2 transition-colors ${
-                        hasVocals === "instrumental"
-                          ? "border-primary bg-primary/10"
-                          : "border-border hover:border-primary/50"
-                      }`}
-                    >
-                      <div className="font-semibold">🎹 Instrumental</div>
-                      <div className="text-xs text-muted-foreground mt-1">
-                        Apenas música
-                      </div>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setHasVocals("vocal")}
-                      className={`flex-1 p-4 rounded-lg border-2 transition-colors ${
-                        hasVocals === "vocal"
-                          ? "border-primary bg-primary/10"
-                          : "border-border hover:border-primary/50"
-                      }`}
-                    >
-                      <div className="font-semibold">🎤 Com Vocal</div>
-                      <div className="text-xs text-muted-foreground mt-1">
-                        Com voz
-                      </div>
-                    </button>
-                  </div>
-                </div>
-
-                {hasVocals === "vocal" && (
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        id="hasLyrics"
-                        checked={hasLyrics}
-                        onChange={(e) => setHasLyrics(e.target.checked)}
-                        className="w-4 h-4 rounded border-border text-primary focus:ring-primary"
-                      />
-                      <Label htmlFor="hasLyrics" className="cursor-pointer">
-                        Gerar letra para a música
-                      </Label>
-                    </div>
-                    <p className="text-sm text-muted-foreground ml-6">
-                      A letra será gerada com base na imagem e no contexto
-                    </p>
-                  </div>
-                )}
 
                 <Button
                   variant="hero"

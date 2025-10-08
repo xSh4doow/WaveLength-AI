@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Music2, Plus, Play, MoreVertical, Download, Trash2, Loader2, PlayCircle } from "lucide-react";
+import { Music2, Plus, Play, MoreVertical, Download, Trash2, Loader2, PlayCircle, Heart } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -294,6 +294,12 @@ export const Dashboard = () => {
                           />
                         ) : (
                           <div className="w-full h-full bg-gradient-to-br from-primary to-accent" />
+                        )}
+                        {/* Favorite indicator */}
+                        {song.is_liked && (
+                          <div className="absolute top-2 right-2 w-8 h-8 rounded-full bg-primary/90 backdrop-blur-sm flex items-center justify-center">
+                            <Heart className="w-4 h-4 text-primary-foreground fill-current" />
+                          </div>
                         )}
                         <button
                           onClick={() => handlePlaySong(song)}

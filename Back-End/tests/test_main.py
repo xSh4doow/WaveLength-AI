@@ -63,7 +63,11 @@ class TestGenerateEndpoint:
         response = client.post(
             "/generate",
             files={"image": ("test.png", test_image_file, "image/png")},
-            data={"duration": "15", "engine": "mock"}
+            data={
+                "user_name": "TestUser",
+                "duration": "30",
+                "engine": "mock"
+            }
         )
 
         assert response.status_code == 200
@@ -72,14 +76,17 @@ class TestGenerateEndpoint:
         assert "prompt" in data
         assert "audio_url" in data
         assert data["engine"] == "mock"
-        assert data["duration"] == 15
+        assert data["duration"] == 30
 
     def test_generate_validates_duration(self, client, test_image_file):
         """Test that duration is validated"""
         response = client.post(
             "/generate",
             files={"image": ("test.png", test_image_file, "image/png")},
-            data={"duration": "100"}  # Invalid, > 60
+            data={
+                "user_name": "TestUser",
+                "duration": "150"  # Invalid, > 100
+            }
         )
 
         assert response.status_code == 400
@@ -89,7 +96,11 @@ class TestGenerateEndpoint:
         response = client.post(
             "/generate",
             files={"image": ("test.png", test_image_file, "image/png")},
-            data={"duration": "15", "engine": "mock"}
+            data={
+                "user_name": "TestUser",
+                "duration": "30",
+                "engine": "mock"
+            }
         )
 
         data = response.json()
@@ -104,7 +115,11 @@ class TestGenerateEndpoint:
         response = client.post(
             "/generate",
             files={"image": ("test.png", test_image_file, "image/png")},
-            data={"duration": "15", "engine": "mock"}
+            data={
+                "user_name": "TestUser",
+                "duration": "30",
+                "engine": "mock"
+            }
         )
 
         data = response.json()
@@ -112,6 +127,26 @@ class TestGenerateEndpoint:
         assert "genre" in data["metadata"]
         assert "bpm" in data["metadata"]
         assert "mood" in data["metadata"]
+
+    def test_generate_with_genre_and_tags(self, client, test_image_file):
+        """Test generate with user-specified genre and tags"""
+        response = client.post(
+            "/generate",
+            files={"image": ("test.png", test_image_file, "image/png")},
+            data={
+                "user_name": "TestUser",
+                "song_name": "Test Song",
+                "genre": "rock",
+                "tags": "energetic, loud, powerful",
+                "duration": "30",
+                "engine": "mock"
+            }
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        # Genre and tags should be reflected in the response
+        assert data["song_name"] == "Test Song"
 
 
 class TestAudioEndpoint:

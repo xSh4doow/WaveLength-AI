@@ -5,7 +5,10 @@ python-multipart==0.0.9
 
 # ML Core
 torch==2.8.0
-transformers==4.44.2
+# audiocraft  # MusicGen with support for 30s generation (requires C++ compiler on Windows)
+# Install with: pip install git+https://github.com/facebookresearch/audiocraft.git
+# For Windows, install Visual Studio Build Tools first
+transformers==4.44.2  # Fallback for systems without audiocraft (limited to 15s)
 Pillow==10.4.0
 
 # Audio Processing

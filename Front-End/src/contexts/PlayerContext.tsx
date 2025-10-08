@@ -2,7 +2,7 @@
  * PlayerContext - Manages player state and controls
  */
 
-import React, { createContext, useContext, useState, useRef, useEffect, ReactNode } from "react";
+import React, { createContext, useContext, useState, useRef, useEffect, useCallback, ReactNode } from "react";
 import { useQueue } from "./QueueContext";
 import { getAudioUrl } from "@/services/api";
 
@@ -33,8 +33,9 @@ interface PlayerContextType {
 const PlayerContext = createContext<PlayerContextType | undefined>(undefined);
 
 export function PlayerProvider({ children }: { children: ReactNode }) {
-  const { currentSong, playNext } = useQueue();
+  const { currentSong, playNext, repeat } = useQueue();
   const audioRef = useRef<HTMLAudioElement>(null);
+  const lastTimeUpdateRef = useRef<number>(0);
 
   const [playerState, setPlayerState] = useState<PlayerState>("hidden");
   const [isPlaying, setIsPlaying] = useState(false);
@@ -77,11 +78,25 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     };
 
     const handleTimeUpdate = () => {
+      // Throttle updates to every 1000ms (1 second) to reduce re-renders and improve performance
+      const now = Date.now();
+      if (now - lastTimeUpdateRef.current < 1000) return;
+      lastTimeUpdateRef.current = now;
       setCurrentTime(Math.floor(audio.currentTime));
     };
 
     const handleEnded = () => {
       setIsPlaying(false);
+
+      // Handle repeat="one": restart current song
+      if (repeat === "one" && currentSong) {
+        audio.currentTime = 0;
+        audio.play().catch((err) => {
+          console.error("Failed to restart song:", err);
+        });
+        return;
+      }
+
       playNext(); // Auto-play next song
     };
 
@@ -106,7 +121,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       audio.removeEventListener("play", handlePlay);
       audio.removeEventListener("pause", handlePause);
     };
-  }, [playNext]);
+  }, [playNext, repeat, currentSong]);
 
   // Control volume
   useEffect(() => {
@@ -115,43 +130,43 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     }
   }, [volume, isMuted]);
 
-  const play = () => {
+  const play = useCallback(() => {
     if (audioRef.current) {
       audioRef.current.play().catch((err) => {
         console.error("Failed to play:", err);
       });
     }
-  };
+  }, []);
 
-  const pause = () => {
+  const pause = useCallback(() => {
     if (audioRef.current) {
       audioRef.current.pause();
     }
-  };
+  }, []);
 
-  const togglePlay = () => {
+  const togglePlay = useCallback(() => {
     if (isPlaying) {
       pause();
     } else {
       play();
     }
-  };
+  }, [isPlaying, play, pause]);
 
-  const seek = (time: number) => {
+  const seek = useCallback((time: number) => {
     if (audioRef.current) {
       audioRef.current.currentTime = time;
       setCurrentTime(time);
     }
-  };
+  }, []);
 
-  const setVolume = (newVolume: number) => {
+  const setVolume = useCallback((newVolume: number) => {
     setVolumeState(Math.max(0, Math.min(100, newVolume)));
     if (isMuted) setIsMuted(false);
-  };
+  }, [isMuted]);
 
-  const toggleMute = () => {
+  const toggleMute = useCallback(() => {
     setIsMuted((prev) => !prev);
-  };
+  }, []);
 
   return (
     <PlayerContext.Provider
