@@ -38,7 +38,11 @@ app.add_middleware(
         "https://wave-length-l708r2qg0-xsh4doows-projects.vercel.app",  # Vercel URL
         "https://wavelength-ai.onrender.com",  # Render Backend URL
         "http://localhost:8080",  # Development
+        "http://localhost:8081",  # Development
+        "http://localhost:8082",  # Development
         "http://localhost:5173",  # Vite dev alternate port
+        "http://localhost:5174",  # Vite dev alternate port
+        "http://localhost:3000",  # React dev
     ],
     allow_credentials=True,
     allow_methods=["*"],
