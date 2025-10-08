@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Music2, Plus, Play, MoreVertical, Download, Trash2, Loader2, PlayCircle } from "lucide-react";
 import {
   DropdownMenu,
@@ -8,6 +9,13 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { getSongsByUser, getAudioUrl, deleteSong, type Song } from "@/services/api";
 import { useUser } from "@/contexts/UserContext";
 import { useQueue } from "@/contexts/QueueContext";
@@ -16,18 +24,42 @@ import { toast } from "@/hooks/use-toast";
 
 export const Dashboard = () => {
   const navigate = useNavigate();
-  const { userName, clearUser } = useUser();
+  const { userName, setUserName, clearUser } = useUser();
   const { setQueue } = useQueue();
   const { setPlayerState } = usePlayer();
 
   const [songs, setSongs] = useState<Song[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showNameDialog, setShowNameDialog] = useState(false);
+  const [tempUserName, setTempUserName] = useState("");
+
+  // Check for userName and show dialog if not set
+  useEffect(() => {
+    if (!userName) {
+      setShowNameDialog(true);
+      setIsLoading(false);
+      return;
+    }
+    setShowNameDialog(false);
+  }, [userName]);
+
+  const handleSetUserName = () => {
+    if (!tempUserName.trim()) {
+      toast({
+        title: "Nome obrigatório",
+        description: "Por favor, insira seu nome para continuar",
+        variant: "destructive",
+      });
+      return;
+    }
+    setUserName(tempUserName.trim());
+    setShowNameDialog(false);
+  };
 
   // Load songs from backend
   useEffect(() => {
     if (!userName) {
-      navigate("/");
       return;
     }
 
@@ -95,9 +127,38 @@ export const Dashboard = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="fixed top-0 left-0 right-0 z-50 glass-effect border-b border-border/50">
+    <>
+      {/* Name Dialog */}
+      <Dialog open={showNameDialog} onOpenChange={setShowNameDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Bem-vindo ao WaveLength!</DialogTitle>
+            <DialogDescription>
+              Para começar, nos diga seu nome
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <Input
+              placeholder="Seu nome"
+              value={tempUserName}
+              onChange={(e) => setTempUserName(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleSetUserName()}
+              autoFocus
+            />
+            <Button
+              variant="hero"
+              className="w-full"
+              onClick={handleSetUserName}
+            >
+              Continuar
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <div className="min-h-screen bg-background">
+        {/* Header */}
+        <header className="fixed top-0 left-0 right-0 z-50 glass-effect border-b border-border/50">
         <div className="container mx-auto px-4">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-2">
@@ -314,7 +375,8 @@ export const Dashboard = () => {
       >
         <Plus className="w-6 h-6 text-primary-foreground" />
       </button>
-    </div>
+      </div>
+    </>
   );
 };
 
