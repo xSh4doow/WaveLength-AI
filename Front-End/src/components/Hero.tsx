@@ -66,18 +66,18 @@ export const Hero = () => {
 
           {/* CTAs */}
           <div className="flex flex-col sm:flex-row gap-4 justify-center items-center pt-4">
-            <Button 
-              variant="hero" 
-              size="xl" 
+            <Button
+              variant="hero"
+              size="xl"
               className="w-full sm:w-auto group"
-              onClick={() => navigate("/auth")}
+              onClick={() => navigate("/dashboard")}
             >
               <Wand2 className="w-5 h-5 group-hover:rotate-12 transition-transform" />
               Começar Agora
             </Button>
-            <Button 
-              variant="glass" 
-              size="xl" 
+            <Button
+              variant="glass"
+              size="xl"
               className="w-full sm:w-auto"
               onClick={scrollToHowItWorks}
             >

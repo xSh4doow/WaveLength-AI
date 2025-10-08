@@ -20,7 +20,7 @@ export const Header = () => {
           </div>
 
           {/* Login Button */}
-          <Button variant="default" size="default" onClick={() => navigate("/auth")}>
+          <Button variant="default" size="default" onClick={() => navigate("/dashboard")}>
             Entrar
           </Button>
         </div>
