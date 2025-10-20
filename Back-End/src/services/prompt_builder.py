@@ -2,7 +2,7 @@ from typing import Dict, Optional
 
 
 class PromptBuilder:
-    """Builds optimized text prompts for MusicGen from caption and musical style."""
+    """Builds optimized text prompts for music generation API from caption and musical style."""
 
     def build(
         self,
@@ -12,7 +12,7 @@ class PromptBuilder:
         user_tags: Optional[str] = None
     ) -> str:
         """
-        Construct a detailed prompt for MusicGen.
+        Construct a detailed prompt for music generation API (Udio/Suno).
 
         Args:
             caption: Image caption from BLIP
@@ -21,7 +21,7 @@ class PromptBuilder:
             user_tags: User-specified tags (comma-separated)
 
         Returns:
-            Formatted prompt string for MusicGen optimized for complete 30s track
+            Formatted prompt string optimized for complete music track
         """
         # Strategy: Use user_genre/tags as priority, but keep CulturalMapper elements when no conflict
         # If user_genre provided, use it; otherwise use CulturalMapper genre
@@ -65,8 +65,8 @@ class PromptBuilder:
         # Instrumentation (always instrumental, no vocals)
         prompt_parts.append(f"instrumental with {instrumentation_str}")
 
-        # CRITICAL: Structure for complete 30-second song
-        # This tells MusicGen to create a full composition, not just a loop
+        # CRITICAL: Structure for complete song
+        # This tells the API to create a full composition, not just a loop
         prompt_parts.append("structured 30-second composition")
         prompt_parts.append("clear intro (0-8s)")
         prompt_parts.append("build-up with melody (8-18s)")

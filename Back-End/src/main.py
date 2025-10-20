@@ -13,7 +13,7 @@ from src import config
 
 # Import handlers
 from src.models.blip_handler import BLIPHandler
-from src.models.musicgen_handler import MusicGenHandler
+from src.models.udio_handler import UdioHandler
 from src.services.cultural_mapper import CulturalMapper
 from src.services.prompt_builder import PromptBuilder
 from src.utils.audio_utils import save_audio
@@ -37,8 +37,8 @@ app.add_middleware(
     allow_origins=[
         "https://wave-length-ai.vercel.app",  # Production Vercel URL
         "https://wave-length-l708r2qg0-xsh4doows-projects.vercel.app",  # Vercel Preview URL
-        "https://wavelength-ai.onrender.com",  # Render Backend URL (legacy)
-        "https://wavelength-backend-*.ondigitalocean.app",  # DigitalOcean App Platform
+        "https://wavelength-ai.onrender.com",  # Render Backend URL
+        "https://wavelength-frontend.loca.lt",  # localtunnel frontend
         "http://localhost:8080",  # Development
         "http://localhost:8081",  # Development
         "http://localhost:8082",  # Development
@@ -56,35 +56,44 @@ os.makedirs(config.OUT_DIR, exist_ok=True)
 
 # ---------- GLOBAL HANDLERS (Lazy Load) ----------
 blip_handler: Optional[BLIPHandler] = None
-musicgen_handler: Optional[MusicGenHandler] = None
+udio_handler: Optional[UdioHandler] = None
 cultural_mapper = CulturalMapper()
 prompt_builder = PromptBuilder()
 
-# AI availability flag
-AI_READY = False
+# AI availability flags
+BLIP_READY = False
+UDIO_READY = False
 
 
 def init_ai_handlers():
     """Initialize AI handlers (lazy loading)."""
-    global blip_handler, musicgen_handler, AI_READY
-
-    if AI_READY:
-        return
+    global blip_handler, udio_handler, BLIP_READY, UDIO_READY
 
     try:
-        # Initialize BLIP
+        # Initialize BLIP (always needed for image captioning)
         if blip_handler is None:
             blip_handler = BLIPHandler(model_name=config.BLIP_MODEL)
-
-        # Initialize MusicGen
-        if musicgen_handler is None:
-            musicgen_handler = MusicGenHandler(model_name=config.MUSICGEN_MODEL)
-
-        AI_READY = True
-        print("[main] AI handlers initialized successfully")
+            BLIP_READY = True
+            print("[main] BLIP handler initialized successfully")
     except Exception as e:
-        print(f"[main] Failed to initialize AI handlers: {repr(e)}")
-        AI_READY = False
+        print(f"[main] Failed to initialize BLIP: {repr(e)}")
+        BLIP_READY = False
+
+    try:
+        # Initialize Udio API if enabled and API key provided
+        if config.USE_UDIO and config.UDIO_API_KEY:
+            if udio_handler is None:
+                udio_handler = UdioHandler(
+                    api_key=config.UDIO_API_KEY,
+                    api_url=config.UDIO_API_URL
+                )
+                UDIO_READY = True
+                print("[main] Udio API handler initialized successfully")
+        else:
+            print("[main] Udio API disabled or no API key provided")
+    except Exception as e:
+        print(f"[main] Failed to initialize Udio API: {repr(e)}")
+        UDIO_READY = False
 
 
 def generate_mock_audio(duration: int = 15, sample_rate: int = 32000) -> tuple[np.ndarray, int]:
@@ -122,25 +131,18 @@ def health():
         print(f"[health] Error initializing AI: {repr(e)}")
 
     device = "cpu"
-    max_duration = 30
-    backend = "unknown"
-
     if blip_handler:
         device = blip_handler.device
 
-    if musicgen_handler:
-        max_duration = musicgen_handler.get_max_duration()
-        backend = "audiocraft" if musicgen_handler.using_audiocraft else "transformers"
-
     return {
         "status": "ok",
-        "ai_ready": AI_READY,
+        "blip_ready": BLIP_READY,
+        "udio_ready": UDIO_READY,
         "device": device,
-        "musicgen_backend": backend,
-        "max_duration": max_duration,
+        "music_generation": "udio_api" if UDIO_READY else "mock",
         "models_loaded": {
             "blip": blip_handler is not None and blip_handler.is_loaded() if blip_handler else False,
-            "musicgen": musicgen_handler is not None and musicgen_handler.is_loaded() if musicgen_handler else False
+            "udio": udio_handler is not None if udio_handler else False
         }
     }
 
@@ -174,17 +176,9 @@ async def generate(
     Returns:
         JSON with song data including audio_url
     """
-    # Get max duration from musicgen handler (30s for audiocraft, 15s for transformers)
-    max_duration = 30
-    if musicgen_handler and musicgen_handler.is_loaded():
-        max_duration = musicgen_handler.get_max_duration()
-
-    # Validate duration
+    # Validate duration (Udio typically supports up to 60-120s, but we keep 15-100 range)
     if not 15 <= duration <= 100:
         raise HTTPException(400, "Duration must be between 15 and 100 seconds")
-
-    # Clamp to backend's max duration
-    duration = min(duration, max_duration)
 
     # Validate user_name
     if not user_name or not user_name.strip():
@@ -193,7 +187,7 @@ async def generate(
     # Read image
     img_bytes = await image.read()
 
-    # Try to initialize AI if not in mock mode
+    # Try to initialize AI handlers
     use_mock = (engine == "mock")
     if not use_mock:
         try:
@@ -201,8 +195,8 @@ async def generate(
         except Exception as e:
             print(f"[generate] Failed to initialize AI: {repr(e)}")
 
-    # Final decision: use mock if AI not ready or explicitly requested
-    use_mock = (engine == "mock") or (not AI_READY)
+    # Final decision: use mock if BLIP not ready or explicitly requested
+    use_mock = (engine == "mock") or (not BLIP_READY)
 
     try:
         if use_mock:
@@ -220,9 +214,12 @@ async def generate(
             # 1. Convert to PIL Image
             pil_image = Image.open(io.BytesIO(img_bytes)).convert("RGB")
 
-            # 2. Generate caption with BLIP
-            caption = blip_handler.generate_caption(pil_image)
+            # 2. Generate enhanced caption with BLIP
+            caption_data = blip_handler.generate_enhanced_caption(pil_image)
+            caption = caption_data["caption"]
+            enhanced_caption = caption_data["enhanced_caption"]
             print(f"[generate] Caption: {caption}")
+            print(f"[generate] Enhanced: {enhanced_caption}")
 
             # 3. Map to musical style
             music_style = cultural_mapper.map_caption_to_style(caption)
@@ -230,18 +227,53 @@ async def generate(
 
             # 4. Build prompt (pass user genre and tags if provided)
             prompt = prompt_builder.build(
-                caption=caption,
+                caption=enhanced_caption,  # Use enhanced caption for better results
                 music_style=music_style,
                 user_genre=genre if genre else None,
                 user_tags=tags if tags else None
             )
             print(f"[generate] Prompt: {prompt}")
 
-            # 5. Generate audio with MusicGen
-            audio_data, sample_rate = musicgen_handler.generate_audio(
-                prompt=prompt,
-                duration=duration
-            )
+            # 5. Generate audio with Udio API or fallback to mock
+            if UDIO_READY and udio_handler:
+                # Use Udio API for music generation
+                print(f"[generate] Using Udio API for music generation...")
+
+                # Determine lyrics type based on parameters
+                if has_vocals and has_lyrics:
+                    lyrics_type = "generate"  # Let Udio generate lyrics
+                elif has_vocals:
+                    lyrics_type = "generate"  # Vocals with auto-generated lyrics
+                else:
+                    lyrics_type = "instrumental"  # No vocals
+
+                # Create temporary path for Udio download
+                file_id = uuid.uuid4().hex
+                audio_filename = f"{file_id}.wav"
+                audio_path = os.path.join(config.OUT_DIR, audio_filename)
+
+                # Generate and download from Udio
+                try:
+                    udio_handler.generate_and_download(
+                        prompt=prompt,
+                        save_path=audio_path,
+                        lyrics_type=lyrics_type,
+                        timeout=300  # 5 minutes timeout
+                    )
+                    print(f"[generate] Udio generation successful!")
+                    # Audio already saved, set flag to skip save_audio later
+                    audio_saved = True
+                except Exception as udio_error:
+                    print(f"[generate] Udio API failed: {udio_error}, falling back to mock")
+                    audio_data, sample_rate = generate_mock_audio(duration=duration)
+                    audio_saved = False
+                    use_mock = True
+            else:
+                # Fallback to mock audio
+                print(f"[generate] Udio not available, using mock audio")
+                audio_data, sample_rate = generate_mock_audio(duration=duration)
+                audio_saved = False
+                use_mock = True
 
     except Exception as e:
         # Fallback to mock on any error
@@ -254,15 +286,19 @@ async def generate(
             "mood": "neutral"
         }
         audio_data, sample_rate = generate_mock_audio(duration=duration)
+        audio_saved = False
         use_mock = True
 
     # 6. Save files
-    file_id = uuid.uuid4().hex
+    # Check if we need to generate file_id (might already exist from Udio flow)
+    if 'file_id' not in locals():
+        file_id = uuid.uuid4().hex
+        audio_filename = f"{file_id}.wav"
+        audio_path = os.path.join(config.OUT_DIR, audio_filename)
 
-    # Save audio
-    audio_filename = f"{file_id}.wav"
-    audio_path = os.path.join(config.OUT_DIR, audio_filename)
-    save_audio(audio_path, audio_data, sample_rate)
+    # Save audio (only if not already saved by Udio)
+    if 'audio_saved' not in locals() or not audio_saved:
+        save_audio(audio_path, audio_data, sample_rate)
 
     # Save image
     image_filename = f"{file_id}.jpg"
@@ -297,6 +333,14 @@ async def generate(
     database.create_song(song_data)
 
     # 9. Return response
+    # Determine engine used
+    if use_mock:
+        engine_used = "mock"
+    elif UDIO_READY and udio_handler:
+        engine_used = "udio"
+    else:
+        engine_used = "blip"
+
     return JSONResponse({
         "id": file_id,
         "song_name": final_song_name,
@@ -305,7 +349,7 @@ async def generate(
         "duration": duration,
         "audio_url": f"/audio/{audio_filename}",
         "image_url": f"/audio/{image_filename}",
-        "engine": "mock" if use_mock else "blip",
+        "engine": engine_used,
         "has_vocals": has_vocals,
         "has_lyrics": has_lyrics and has_vocals,
         "lyrics": lyrics,

@@ -59,6 +59,7 @@ dist-ssr/
 
 # Output files
 Back-End/output/
+Back-End/src/out/
 *.wav
 *.mp3
 
@@ -74,21 +75,13 @@ Front-End/test-results/
 
 # Internal docs (keep locally only)
 freshmemorycompact.md
+Instrucoes e Doc.mD
 GUIA-*.md
+Back-End/AUDIOCRAFT-INSTALL.md
+Back-End/RENDER-DEPLOY.md
 
 # Logs
 *.log
 
 # Claude Code
 .claude/settings.local.json
-DEPLOY-GRATUITO.md
-Instrucoes e Doc.mD
-PR-DESCRIPTION.md
-Back-End/AUDIOCRAFT-INSTALL.md
-Back-End/RENDER-DEPLOY.md
-Back-End/src/out/3b8b043804d8430daded00b98159d7fc.jpg
-Back-End/src/out/9f12a2f1f1254dcfac97bb362798e838.jpg
-Back-End/src/out/27327c82bc454e0a8c5312224eb520db.jpg
-Back-End/src/out/b8c16d964be148e48b5609e88cd0645b.jpg
-VERCEL-FRONTEND-UPDATE.md
-DIGITALOCEAN-DEPLOY.md

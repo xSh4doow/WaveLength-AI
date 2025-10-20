@@ -3,31 +3,26 @@ fastapi==0.116.1
 uvicorn[standard]==0.35.0
 python-multipart==0.0.9
 
-# ML Core
+# ML Core - Image Captioning
 torch==2.8.0
-# audiocraft  # MusicGen with support for 30s generation (requires C++ compiler on Windows)
-# Install with: pip install git+https://github.com/facebookresearch/audiocraft.git
-# For Windows, install Visual Studio Build Tools first
-transformers==4.44.2  # Fallback for systems without audiocraft (limited to 15s)
+transformers==4.44.2
 Pillow==10.4.0
 
-# Audio Processing
+# ML Support Libraries
+accelerate==0.34.2
+safetensors==0.4.5
+einops==0.8.0
+sentencepiece==0.2.0
+
+# HTTP Client for API
+requests>=2.31.0
+
+# Audio Processing (for mock generation only)
 scipy>=1.13.1
 numpy>=1.25.2
 
 # Utilities
 python-dotenv==1.0.0
 
-# Database
-psycopg2-binary==2.9.9  # PostgreSQL adapter (optional, for production)
-
-# Additional ML libraries
-accelerate==0.34.2
-safetensors==0.4.5
-einops==0.8.0
-sentencepiece==0.2.0
-
-# FASE 2/3 - Adicionar quando necessário
-# openai-clip==1.0.1
-# colorthief==0.2.1
-# opencv-python==4.8.1.78
+# Database (optional, for production)
+psycopg2-binary==2.9.9
