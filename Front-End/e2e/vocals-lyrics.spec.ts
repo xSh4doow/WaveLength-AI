@@ -32,17 +32,17 @@ test.describe('Vocals and Lyrics', () => {
     // Wait for page to load
     await page.waitForLoadState('networkidle');
 
-    // Should show both options (using more flexible selectors)
-    await expect(page.locator('button', { hasText: 'Instrumental' }).first()).toBeVisible({ timeout: 5000 });
-    await expect(page.locator('button', { hasText: 'Com Letra' }).first()).toBeVisible({ timeout: 5000 });
+    // Should show both options (text is inside <p> tags within buttons)
+    await expect(page.locator('p.font-semibold:has-text("Instrumental")')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('p.font-semibold:has-text("Com Letra Gerada")')).toBeVisible({ timeout: 5000 });
   });
 
   test('should select instrumental type by default', async ({ page }) => {
     await page.goto('http://localhost:8080/create');
     await page.waitForLoadState('networkidle');
 
-    // Instrumental should be selected by default (check for active class)
-    const instrumentalButton = page.locator('button').filter({ hasText: 'Instrumental' }).first();
+    // Instrumental should be selected by default (find button containing the <p> with text)
+    const instrumentalButton = page.locator('button:has(p:has-text("Instrumental"))').first();
     await instrumentalButton.waitFor({ state: 'visible', timeout: 5000 });
     const classes = await instrumentalButton.getAttribute('class');
     expect(classes).toContain('border-primary'); // Active state
@@ -52,8 +52,8 @@ test.describe('Vocals and Lyrics', () => {
     await page.goto('http://localhost:8080/create');
     await page.waitForLoadState('networkidle');
 
-    // Click on "Com Letra" (using partial match)
-    const lyricsButton = page.locator('button').filter({ hasText: /Com Letra/i }).first();
+    // Click on "Com Letra Gerada" button
+    const lyricsButton = page.locator('button:has(p:has-text("Com Letra Gerada"))').first();
     await lyricsButton.waitFor({ state: 'visible', timeout: 5000 });
     await lyricsButton.click();
 
@@ -63,7 +63,7 @@ test.describe('Vocals and Lyrics', () => {
     expect(classes).toContain('border-primary');
 
     // Click back to Instrumental
-    const instrumentalButton = page.locator('button').filter({ hasText: 'Instrumental' }).first();
+    const instrumentalButton = page.locator('button:has(p:has-text("Instrumental"))').first();
     await instrumentalButton.click();
 
     // Should be selected again

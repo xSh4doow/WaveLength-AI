@@ -95,10 +95,12 @@ test.describe('Authentication Flow', () => {
 
     // Reload page
     await page.reload();
+    await page.waitForLoadState('networkidle');
 
     // Should still be on dashboard (authenticated)
+    await page.waitForURL('**/dashboard', { timeout: 5000 });
     expect(page.url()).toContain('/dashboard');
-    await expect(page.getByRole('heading', { name: testName })).toBeVisible();
+    await expect(page.getByRole('heading', { name: testName })).toBeVisible({ timeout: 10000 });
   });
 
   test('should logout and redirect to auth', async ({ page }) => {

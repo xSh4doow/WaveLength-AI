@@ -46,8 +46,8 @@ test.describe('Follow System', () => {
     // Wait for search results
     await page.waitForTimeout(500); // Debounce time
 
-    // Should show search results
-    await expect(page.locator('text=Searchable User')).toBeVisible({ timeout: 3000 });
+    // Should show search results (use first() to avoid strict mode)
+    await expect(page.locator('text=Searchable User').first()).toBeVisible({ timeout: 3000 });
   });
 
   test('should follow and unfollow a user', async ({ page, context }) => {
