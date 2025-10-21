@@ -9,6 +9,14 @@ from src.database import init_database
 @pytest.fixture(autouse=True)
 def setup_database():
     """Initialize database before each test"""
+    from src.database import get_db
+    # Drop all tables before each test to ensure clean state
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DROP TABLE IF EXISTS songs")
+        cursor.execute("DROP TABLE IF EXISTS follows")
+        cursor.execute("DROP TABLE IF EXISTS users")
+        conn.commit()
     init_database()
     yield
 

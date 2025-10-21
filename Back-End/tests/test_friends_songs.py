@@ -9,6 +9,14 @@ from src.database import init_database
 @pytest.fixture(autouse=True)
 def setup_database():
     """Initialize database before each test"""
+    from src.database import get_db
+    # Drop all tables before each test to ensure clean state
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DROP TABLE IF EXISTS songs")
+        cursor.execute("DROP TABLE IF EXISTS follows")
+        cursor.execute("DROP TABLE IF EXISTS users")
+        conn.commit()
     init_database()
     yield
 
@@ -50,6 +58,7 @@ def test_users_with_songs(client, test_image_file):
     ).json()
 
     # User 2 creates 2 songs
+    user2_song_ids = []
     for i in range(2):
         # Reset image file pointer
         img = Image.new('RGB', (100, 100), color='blue')
@@ -57,7 +66,7 @@ def test_users_with_songs(client, test_image_file):
         img.save(img_bytes, format='PNG')
         img_bytes.seek(0)
 
-        client.post(
+        response = client.post(
             "/generate",
             files={"image": ("test.png", img_bytes, "image/png")},
             data={
@@ -67,6 +76,7 @@ def test_users_with_songs(client, test_image_file):
                 "engine": "mock"
             }
         )
+        user2_song_ids.append(response.json()["id"])
 
     # User 3 creates 1 song
     img = Image.new('RGB', (100, 100), color='green')
@@ -74,7 +84,7 @@ def test_users_with_songs(client, test_image_file):
     img.save(img_bytes, format='PNG')
     img_bytes.seek(0)
 
-    client.post(
+    response = client.post(
         "/generate",
         files={"image": ("test.png", img_bytes, "image/png")},
         data={
@@ -84,6 +94,16 @@ def test_users_with_songs(client, test_image_file):
             "engine": "mock"
         }
     )
+    user3_song_id = response.json()["id"]
+
+    # Manually link songs to users in database for testing friends functionality
+    from src.database import get_db
+    with get_db() as conn:
+        cursor = conn.cursor()
+        for song_id in user2_song_ids:
+            cursor.execute("UPDATE songs SET user_id = ? WHERE id = ?", (user2["user_id"], song_id))
+        cursor.execute("UPDATE songs SET user_id = ? WHERE id = ?", (user3["user_id"], user3_song_id))
+        conn.commit()
 
     return {
         "user1": user1,

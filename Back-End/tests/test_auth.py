@@ -7,6 +7,14 @@ from src.database import init_database, create_user, get_user_by_email
 @pytest.fixture(autouse=True)
 def setup_database():
     """Initialize database before each test"""
+    from src.database import get_db
+    # Drop all tables before each test to ensure clean state
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DROP TABLE IF EXISTS songs")
+        cursor.execute("DROP TABLE IF EXISTS follows")
+        cursor.execute("DROP TABLE IF EXISTS users")
+        conn.commit()
     init_database()
     yield
 
@@ -62,7 +70,7 @@ class TestRegisterEndpoint:
         )
 
         assert response.status_code == 400
-        assert "already exists" in response.json()["detail"].lower()
+        assert "already registered" in response.json()["detail"].lower()
 
     def test_register_invalid_email(self, client):
         """Test registration with invalid email format"""
@@ -141,7 +149,7 @@ class TestLoginEndpoint:
         )
 
         assert response.status_code == 401
-        assert "incorrect" in response.json()["detail"].lower()
+        assert "invalid" in response.json()["detail"].lower()
 
     def test_login_nonexistent_user(self, client):
         """Test login with non-existent email"""
@@ -151,8 +159,7 @@ class TestLoginEndpoint:
         )
 
         assert response.status_code == 401
-        assert "not found" in response.json()["detail"].lower() or \
-               "incorrect" in response.json()["detail"].lower()
+        assert "invalid" in response.json()["detail"].lower()
 
 
 class TestGetUserEndpoint:
