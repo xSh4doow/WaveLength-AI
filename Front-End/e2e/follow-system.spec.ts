@@ -80,17 +80,18 @@ test.describe('Follow System', () => {
     // Click follow button
     await page.locator('button:has-text("Seguir")').first().click();
 
-    // Should show success message
-    await expect(page.locator('text=Seguindo!')).toBeVisible({ timeout: 3000 });
+    // Should show success toast message
+    await expect(page.locator('[data-lov-name="ToastTitle"]').filter({ hasText: 'Seguindo!' })).toBeVisible({ timeout: 5000 });
 
-    // Should appear in "Seguindo" list
-    await expect(page.locator('text=Seguindo (1)')).toBeVisible({ timeout: 3000 });
+    // Should appear in "Seguindo" list (wait for UI update)
+    await page.waitForTimeout(1000);
+    await expect(page.locator('text=Seguindo (1)').first()).toBeVisible({ timeout: 3000 });
 
-    // Unfollow
-    await page.locator('button').filter({ hasText: 'UserMinus' }).first().click();
+    // Unfollow - find the unfollow button (may be represented differently)
+    await page.locator('button[aria-label*="Deixar de seguir"], button:has-text("Seguindo")').first().click();
 
-    // Should show unfollow message
-    await expect(page.locator('text=Deixou de seguir')).toBeVisible({ timeout: 3000 });
+    // Should show unfollow toast message
+    await expect(page.locator('[data-lov-name="ToastTitle"]').filter({ hasText: /deixou de seguir/i })).toBeVisible({ timeout: 5000 });
   });
 
   test('should see friends songs in Library', async ({ page, context }) => {

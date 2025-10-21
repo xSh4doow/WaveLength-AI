@@ -41,7 +41,10 @@ export default defineConfig({
   webServer: {
     command: 'npm run dev',
     url: 'http://localhost:8080',
-    reuseExistingServer: !process.env.CI,
+    reuseExistingServer: false, // Always start fresh server with correct env vars
     timeout: 120000,
+    env: {
+      VITE_API_URL: 'http://localhost:8000',
+    },
   },
 });

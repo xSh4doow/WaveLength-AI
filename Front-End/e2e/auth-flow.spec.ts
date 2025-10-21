@@ -34,8 +34,8 @@ test.describe('Authentication Flow', () => {
     await page.waitForURL('**/dashboard');
     expect(page.url()).toContain('/dashboard');
 
-    // Should show user name in dashboard
-    await expect(page.locator(`text=${testName}`)).toBeVisible();
+    // Should show user name in dashboard heading
+    await expect(page.getByRole('heading', { name: testName })).toBeVisible();
   });
 
   test('should login with existing credentials', async ({ page }) => {
@@ -70,8 +70,8 @@ test.describe('Authentication Flow', () => {
     await page.fill('input[type="password"]', 'WrongPassword123!');
     await page.click('button:has-text("Entrar")');
 
-    // Should show error toast
-    await expect(page.locator('text=Erro ao fazer login')).toBeVisible({ timeout: 3000 });
+    // Should show error toast (wait for toast to appear)
+    await expect(page.locator('[data-lov-name="ToastTitle"]').filter({ hasText: 'Erro ao fazer login' })).toBeVisible({ timeout: 3000 });
   });
 
   test('should protect routes when not authenticated', async ({ page }) => {
@@ -98,7 +98,7 @@ test.describe('Authentication Flow', () => {
 
     // Should still be on dashboard (authenticated)
     expect(page.url()).toContain('/dashboard');
-    await expect(page.locator(`text=${testName}`)).toBeVisible();
+    await expect(page.getByRole('heading', { name: testName })).toBeVisible();
   });
 
   test('should logout and redirect to auth', async ({ page }) => {

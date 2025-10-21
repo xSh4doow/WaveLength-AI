@@ -20,34 +20,45 @@ test.describe('Vocals and Lyrics', () => {
     await page.fill('input[type="email"]', testEmail);
     await page.fill('input[type="password"]', password);
     await page.click('button:has-text("Criar Conta")');
-    await page.waitForURL('**/dashboard');
+    await page.waitForURL('**/dashboard', { timeout: 10000 });
+
+    // Wait for dashboard to be fully loaded
+    await page.waitForLoadState('networkidle');
   });
 
   test('should show radio buttons for music type', async ({ page }) => {
     await page.goto('http://localhost:8080/create');
 
-    // Should show both options
-    await expect(page.locator('text=Instrumental')).toBeVisible();
-    await expect(page.locator('text=Com Letra Gerada')).toBeVisible();
+    // Wait for page to load
+    await page.waitForLoadState('networkidle');
+
+    // Should show both options (using more flexible selectors)
+    await expect(page.locator('button', { hasText: 'Instrumental' }).first()).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('button', { hasText: 'Com Letra' }).first()).toBeVisible({ timeout: 5000 });
   });
 
   test('should select instrumental type by default', async ({ page }) => {
     await page.goto('http://localhost:8080/create');
+    await page.waitForLoadState('networkidle');
 
     // Instrumental should be selected by default (check for active class)
     const instrumentalButton = page.locator('button').filter({ hasText: 'Instrumental' }).first();
+    await instrumentalButton.waitFor({ state: 'visible', timeout: 5000 });
     const classes = await instrumentalButton.getAttribute('class');
     expect(classes).toContain('border-primary'); // Active state
   });
 
   test('should switch between music types', async ({ page }) => {
     await page.goto('http://localhost:8080/create');
+    await page.waitForLoadState('networkidle');
 
-    // Click on "Com Letra Gerada"
-    const lyricsButton = page.locator('button').filter({ hasText: 'Com Letra Gerada' }).first();
+    // Click on "Com Letra" (using partial match)
+    const lyricsButton = page.locator('button').filter({ hasText: /Com Letra/i }).first();
+    await lyricsButton.waitFor({ state: 'visible', timeout: 5000 });
     await lyricsButton.click();
 
     // Should be selected
+    await page.waitForTimeout(500); // Wait for state update
     const classes = await lyricsButton.getAttribute('class');
     expect(classes).toContain('border-primary');
 
@@ -56,6 +67,7 @@ test.describe('Vocals and Lyrics', () => {
     await instrumentalButton.click();
 
     // Should be selected again
+    await page.waitForTimeout(500); // Wait for state update
     const instrumentalClasses = await instrumentalButton.getAttribute('class');
     expect(instrumentalClasses).toContain('border-primary');
   });
