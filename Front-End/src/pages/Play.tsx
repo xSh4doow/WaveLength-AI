@@ -211,7 +211,7 @@ export const Play = () => {
       <div className="absolute inset-0 gradient-hero opacity-30" />
 
       <div className="relative z-10 min-h-screen flex items-center justify-center px-4 py-20">
-        <div className="w-full max-w-2xl">
+        <div className="w-full max-w-6xl">
           {/* Header */}
           <div className="flex items-center justify-between mb-8">
             <div className="flex items-center gap-2">
@@ -228,125 +228,130 @@ export const Play = () => {
             </Button>
           </div>
 
-          {/* Main Player Card */}
-          <div className="glass-effect rounded-3xl p-8 space-y-8">
-            {/* Album Art */}
-            <div className="aspect-square rounded-2xl overflow-hidden relative">
-              {imageUrl ? (
-                <img
-                  src={imageUrl}
-                  alt={song.song_name}
-                  className="w-full h-full object-cover"
-                />
-              ) : (
-                <div className="w-full h-full bg-gradient-to-br from-primary to-accent" />
-              )}
-              <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
-            </div>
-
-            {/* Song Info */}
-            <div className="space-y-2">
-              <h1 className="text-3xl font-bold">{song.song_name}</h1>
-              <p className="text-muted-foreground">Por {song.user_name}</p>
-              {song.caption && (
-                <p className="text-sm text-muted-foreground italic">
-                  "{song.caption}"
-                </p>
-              )}
-              {song.genre && (
-                <span className="inline-block px-3 py-1 rounded-full glass-effect text-sm">
-                  {song.genre}
-                </span>
-              )}
-            </div>
-
-            {/* Audio Player */}
-            <audio ref={audioRef} src={audioUrl} />
-
-            {/* Controls */}
-            <div className="space-y-4">
-              {/* Progress Bar */}
-              <div className="space-y-2">
-                <input
-                  type="range"
-                  min="0"
-                  max={song.duration}
-                  value={currentTime}
-                  onChange={handleSeek}
-                  className="w-full h-2 bg-muted rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary [&::-webkit-slider-thumb]:cursor-pointer"
-                  style={{
-                    background: `linear-gradient(to right, hsl(var(--primary)) 0%, hsl(var(--primary)) ${(currentTime / song.duration) * 100}%, hsl(var(--muted)) ${(currentTime / song.duration) * 100}%, hsl(var(--muted)) 100%)`
-                  }}
-                />
-                <div className="flex justify-between text-sm text-muted-foreground">
-                  <span>{formatTime(currentTime)}</span>
-                  <span>{formatTime(song.duration)}</span>
-                </div>
+          {/* Main Player - 2 Column Grid */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Left Column - Player */}
+            <div className="glass-effect rounded-3xl p-8 space-y-6">
+              {/* Album Art */}
+              <div className="aspect-square rounded-2xl overflow-hidden relative">
+                {imageUrl ? (
+                  <img
+                    src={imageUrl}
+                    alt={song.song_name}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="w-full h-full bg-gradient-to-br from-primary to-accent" />
+                )}
+                <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
               </div>
 
-              {/* Play/Pause and Volume */}
-              <div className="flex items-center gap-4">
-                {/* Play Button */}
-                <Button
-                  variant="hero"
-                  size="lg"
-                  onClick={togglePlayPause}
-                  className="w-16 h-16 rounded-full"
-                >
-                  {isPlaying ? (
-                    <Pause className="w-6 h-6" />
-                  ) : (
-                    <PlayIcon className="w-6 h-6 ml-1" />
-                  )}
-                </Button>
+              {/* Song Info */}
+              <div className="space-y-2">
+                <h1 className="text-3xl font-bold">{song.song_name}</h1>
+                <p className="text-muted-foreground">Por {song.user_name}</p>
+                {song.caption && (
+                  <p className="text-sm text-muted-foreground italic">
+                    "{song.caption}"
+                  </p>
+                )}
+                {song.genre && (
+                  <span className="inline-block px-3 py-1 rounded-full glass-effect text-sm">
+                    {song.genre}
+                  </span>
+                )}
+              </div>
 
-                {/* Volume Control */}
-                <div className="flex items-center gap-2 flex-1">
-                  <button onClick={toggleMute} className="text-muted-foreground hover:text-foreground">
-                    {isMuted || volume === 0 ? (
-                      <VolumeX className="w-5 h-5" />
-                    ) : (
-                      <Volume2 className="w-5 h-5" />
-                    )}
-                  </button>
+              {/* Audio Player */}
+              <audio ref={audioRef} src={audioUrl} />
+
+              {/* Controls */}
+              <div className="space-y-4">
+                {/* Progress Bar */}
+                <div className="space-y-2">
                   <input
                     type="range"
                     min="0"
-                    max="1"
-                    step="0.01"
-                    value={isMuted ? 0 : volume}
-                    onChange={handleVolumeChange}
-                    className="w-24 h-2 bg-muted rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary"
+                    max={song.duration}
+                    value={currentTime}
+                    onChange={handleSeek}
+                    className="w-full h-2 bg-muted rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary [&::-webkit-slider-thumb]:cursor-pointer"
+                    style={{
+                      background: `linear-gradient(to right, hsl(var(--primary)) 0%, hsl(var(--primary)) ${(currentTime / song.duration) * 100}%, hsl(var(--muted)) ${(currentTime / song.duration) * 100}%, hsl(var(--muted)) 100%)`
+                    }}
                   />
+                  <div className="flex justify-between text-sm text-muted-foreground">
+                    <span>{formatTime(currentTime)}</span>
+                    <span>{formatTime(song.duration)}</span>
+                  </div>
                 </div>
 
-                {/* Action Buttons */}
-                <div className="flex items-center gap-2">
+                {/* Play/Pause and Volume */}
+                <div className="flex items-center gap-4">
+                  {/* Play Button */}
                   <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={handleDownload}
+                    variant="hero"
+                    size="lg"
+                    onClick={togglePlayPause}
+                    className="w-16 h-16 rounded-full"
                   >
-                    <Download className="w-5 h-5" />
+                    {isPlaying ? (
+                      <Pause className="w-6 h-6" />
+                    ) : (
+                      <PlayIcon className="w-6 h-6 ml-1" />
+                    )}
                   </Button>
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={handleShare}
-                  >
-                    <Share2 className="w-5 h-5" />
-                  </Button>
+
+                  {/* Volume Control */}
+                  <div className="flex items-center gap-2 flex-1">
+                    <button onClick={toggleMute} className="text-muted-foreground hover:text-foreground">
+                      {isMuted || volume === 0 ? (
+                        <VolumeX className="w-5 h-5" />
+                      ) : (
+                        <Volume2 className="w-5 h-5" />
+                      )}
+                    </button>
+                    <input
+                      type="range"
+                      min="0"
+                      max="1"
+                      step="0.01"
+                      value={isMuted ? 0 : volume}
+                      onChange={handleVolumeChange}
+                      className="w-24 h-2 bg-muted rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary"
+                    />
+                  </div>
+
+                  {/* Action Buttons */}
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={handleDownload}
+                    >
+                      <Download className="w-5 h-5" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={handleShare}
+                    >
+                      <Share2 className="w-5 h-5" />
+                    </Button>
+                  </div>
                 </div>
               </div>
             </div>
 
-            {/* Lyrics (if available) */}
-            {song.lyrics && (
-              <div className="glass-effect rounded-xl p-6 space-y-2">
-                <h3 className="font-semibold text-sm uppercase text-muted-foreground">
-                  Letra
-                </h3>
-                <p className="text-sm whitespace-pre-wrap">{song.lyrics}</p>
+            {/* Right Column - Lyrics (conditional) */}
+            {song.has_lyrics && song.lyrics && (
+              <div className="glass-effect rounded-3xl p-8">
+                <h3 className="text-xl font-bold mb-6">Letra</h3>
+                <div className="max-h-[600px] overflow-y-auto pr-2">
+                  <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed">
+                    {song.lyrics}
+                  </pre>
+                </div>
               </div>
             )}
           </div>

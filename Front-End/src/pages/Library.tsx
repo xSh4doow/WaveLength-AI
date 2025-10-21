@@ -10,19 +10,23 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { getSongsByUser, getAudioUrl, type Song } from "@/services/api";
-import { useUser } from "@/contexts/UserContext";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { getSongs, getSongsByUser, getFriendsSongs, getAudioUrl, type Song } from "@/services/api";
+import { useAuth } from "@/contexts/AuthContext";
 import { useQueue } from "@/contexts/QueueContext";
 import { usePlayer } from "@/contexts/PlayerContext";
 
 export const Library = () => {
   const navigate = useNavigate();
-  const { userName, clearUser } = useUser();
+  const { userId, userName, logout } = useAuth();
   const { setQueue } = useQueue();
   const { setPlayerState } = usePlayer();
 
-  const [songs, setSongs] = useState<Song[]>([]);
+  const [allSongs, setAllSongs] = useState<Song[]>([]);
+  const [mySongs, setMySongs] = useState<Song[]>([]);
+  const [friendsSongs, setFriendsSongs] = useState<Song[]>([]);
   const [filteredSongs, setFilteredSongs] = useState<Song[]>([]);
+  const [activeTab, setActiveTab] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [filterGenre, setFilterGenre] = useState("all");
   const [sortBy, setSortBy] = useState("recent");
@@ -31,8 +35,7 @@ export const Library = () => {
 
   // Load songs from backend
   useEffect(() => {
-    if (!userName) {
-      navigate("/");
+    if (!userId) {
       return;
     }
 
@@ -40,25 +43,41 @@ export const Library = () => {
       try {
         setIsLoading(true);
         setError(null);
-        const userSongs = await getSongsByUser(userName);
-        setSongs(userSongs);
-        setFilteredSongs(userSongs);
+
+        // Load all tabs data in parallel
+        const [all, mine, friends] = await Promise.all([
+          getSongs(100, 0),
+          getSongsByUser(userName || "", 100, 0),
+          getFriendsSongs(userId, 100, 0),
+        ]);
+
+        setAllSongs(all);
+        setMySongs(mine);
+        setFriendsSongs(friends);
+
+        // Set initial filtered songs based on active tab
+        if (activeTab === "all") setFilteredSongs(all);
+        else if (activeTab === "mine") setFilteredSongs(mine);
+        else if (activeTab === "friends") setFilteredSongs(friends);
       } catch (err) {
         console.error("Error loading songs:", err);
         setError("Erro ao carregar músicas");
-        setSongs([]);
-        setFilteredSongs([]);
       } finally {
         setIsLoading(false);
       }
     };
 
     loadSongs();
-  }, [userName, navigate]);
+  }, [userId, userName, activeTab]);
 
   // Filter and sort songs
   useEffect(() => {
-    let result = [...songs];
+    let sourceSongs: Song[] = [];
+    if (activeTab === "all") sourceSongs = allSongs;
+    else if (activeTab === "mine") sourceSongs = mySongs;
+    else if (activeTab === "friends") sourceSongs = friendsSongs;
+
+    let result = [...sourceSongs];
 
     // Search filter
     if (searchQuery) {
@@ -83,11 +102,11 @@ export const Library = () => {
     }
 
     setFilteredSongs(result);
-  }, [songs, searchQuery, filterGenre, sortBy]);
+  }, [allSongs, mySongs, friendsSongs, activeTab, searchQuery, filterGenre, sortBy]);
 
   const handleLogout = () => {
-    clearUser();
-    navigate("/");
+    logout();
+    navigate("/auth");
   };
 
   const handlePlaySong = (song: Song) => {
@@ -142,11 +161,20 @@ export const Library = () => {
         <div className="container mx-auto max-w-6xl">
           {/* Header */}
           <div className="mb-8">
-            <h1 className="text-4xl font-bold mb-2">Criações</h1>
+            <h1 className="text-4xl font-bold mb-2">Biblioteca</h1>
             <p className="text-muted-foreground">
-              Explore músicas geradas por toda a comunidade
+              Explore suas criações e músicas de amigos
             </p>
           </div>
+
+          {/* Tabs */}
+          <Tabs defaultValue="all" className="mb-6" onValueChange={(value) => setActiveTab(value)}>
+            <TabsList className="glass-effect">
+              <TabsTrigger value="all">Todas</TabsTrigger>
+              <TabsTrigger value="mine">Minhas</TabsTrigger>
+              <TabsTrigger value="friends">Amigos</TabsTrigger>
+            </TabsList>
+          </Tabs>
 
           {/* Filters */}
           <div className="glass-effect rounded-3xl p-6 mb-8">
@@ -220,9 +248,13 @@ export const Library = () => {
                 <p className="text-muted-foreground">
                   {searchQuery || filterGenre !== "all"
                     ? "Nenhuma música encontrada com esses filtros"
-                    : "Você ainda não criou nenhuma música"}
+                    : activeTab === "all"
+                    ? "Nenhuma música disponível"
+                    : activeTab === "mine"
+                    ? "Você ainda não criou nenhuma música"
+                    : "Nenhum amigo com músicas"}
                 </p>
-                {!searchQuery && filterGenre === "all" && (
+                {!searchQuery && filterGenre === "all" && activeTab === "mine" && (
                   <Button onClick={() => navigate("/create")}>Criar Primeira Música</Button>
                 )}
               </div>

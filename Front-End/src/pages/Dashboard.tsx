@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Music2, Plus, Play, MoreVertical, Download, Trash2, Loader2, PlayCircle, Heart } from "lucide-react";
+import { Music2, Plus, Play, MoreVertical, Download, Trash2, Loader2, PlayCircle, Heart, Search, UserPlus, UserMinus } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -16,74 +16,128 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { getSongsByUser, getAudioUrl, deleteSong, type Song } from "@/services/api";
-import { useUser } from "@/contexts/UserContext";
+import { getSongsByUser, getAudioUrl, deleteSong, searchUsers, followUser, unfollowUser, getFollowing, type Song, type User } from "@/services/api";
+import { useAuth } from "@/contexts/AuthContext";
 import { useQueue } from "@/contexts/QueueContext";
 import { usePlayer } from "@/contexts/PlayerContext";
 import { toast } from "@/hooks/use-toast";
 
 export const Dashboard = () => {
   const navigate = useNavigate();
-  const { userName, setUserName, clearUser } = useUser();
+  const { userId, userName, logout } = useAuth();
   const { setQueue } = useQueue();
   const { setPlayerState } = usePlayer();
 
   const [songs, setSongs] = useState<Song[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [showNameDialog, setShowNameDialog] = useState(false);
-  const [tempUserName, setTempUserName] = useState("");
 
-  // Check for userName and show dialog if not set
+  // Friends functionality
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<User[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [following, setFollowing] = useState<User[]>([]);
+  const [followingIds, setFollowingIds] = useState<Set<number>>(new Set());
+
+  // Load following list and songs
   useEffect(() => {
-    if (!userName) {
-      setShowNameDialog(true);
-      setIsLoading(false);
-      return;
-    }
-    setShowNameDialog(false);
-  }, [userName]);
+    if (!userId || !userName) return;
 
-  const handleSetUserName = () => {
-    if (!tempUserName.trim()) {
-      toast({
-        title: "Nome obrigatório",
-        description: "Por favor, insira seu nome para continuar",
-        variant: "destructive",
-      });
-      return;
-    }
-    setUserName(tempUserName.trim());
-    setShowNameDialog(false);
-  };
-
-  // Load songs from backend
-  useEffect(() => {
-    if (!userName) {
-      return;
-    }
-
-    const loadSongs = async () => {
+    const loadData = async () => {
       try {
         setIsLoading(true);
         setError(null);
-        const userSongs = await getSongsByUser(userName);
+
+        const [userSongs, followingList] = await Promise.all([
+          getSongsByUser(userName),
+          getFollowing(userId),
+        ]);
+
         setSongs(userSongs);
+        setFollowing(followingList);
+        setFollowingIds(new Set(followingList.map(u => u.id)));
       } catch (err) {
-        console.error("Error loading songs:", err);
-        setError("Erro ao carregar músicas");
+        console.error("Error loading data:", err);
+        setError("Erro ao carregar dados");
         setSongs([]);
       } finally {
         setIsLoading(false);
       }
     };
 
-    loadSongs();
-  }, [userName, navigate]);
+    loadData();
+  }, [userId, userName]);
+
+  // Search users with debounce
+  useEffect(() => {
+    if (!searchQuery || searchQuery.length < 2) {
+      setSearchResults([]);
+      return;
+    }
+
+    const timeoutId = setTimeout(async () => {
+      try {
+        setIsSearching(true);
+        const results = await searchUsers(searchQuery);
+        // Filter out current user
+        setSearchResults(results.filter(u => u.id !== userId));
+      } catch (err) {
+        console.error("Error searching users:", err);
+      } finally {
+        setIsSearching(false);
+      }
+    }, 300);
+
+    return () => clearTimeout(timeoutId);
+  }, [searchQuery, userId]);
 
   const handleLogout = () => {
-    clearUser();
-    navigate("/");
+    logout();
+    navigate("/auth");
+  };
+
+  const handleFollow = async (targetUserId: number) => {
+    if (!userId) return;
+
+    try {
+      await followUser(targetUserId, userId);
+      // Reload following list
+      const updatedFollowing = await getFollowing(userId);
+      setFollowing(updatedFollowing);
+      setFollowingIds(new Set(updatedFollowing.map(u => u.id)));
+      toast({
+        title: "Seguindo!",
+        description: "Você agora segue este usuário",
+      });
+    } catch (err) {
+      toast({
+        title: "Erro ao seguir",
+        description: "Tente novamente",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleUnfollow = async (targetUserId: number) => {
+    if (!userId) return;
+
+    try {
+      await unfollowUser(targetUserId, userId);
+      // Reload following list
+      const updatedFollowing = await getFollowing(userId);
+      setFollowing(updatedFollowing);
+      setFollowingIds(new Set(updatedFollowing.map(u => u.id)));
+      toast({
+        title: "Deixou de seguir",
+        description: "Você não segue mais este usuário",
+      });
+    } catch (err) {
+      toast({
+        title: "Erro ao deixar de seguir",
+        description: "Tente novamente",
+        variant: "destructive",
+      });
+    }
   };
 
   const handlePlayAll = () => {
@@ -127,36 +181,7 @@ export const Dashboard = () => {
   };
 
   return (
-    <>
-      {/* Name Dialog */}
-      <Dialog open={showNameDialog} onOpenChange={setShowNameDialog}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Bem-vindo ao WaveLength!</DialogTitle>
-            <DialogDescription>
-              Para começar, nos diga seu nome
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <Input
-              placeholder="Seu nome"
-              value={tempUserName}
-              onChange={(e) => setTempUserName(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleSetUserName()}
-              autoFocus
-            />
-            <Button
-              variant="hero"
-              className="w-full"
-              onClick={handleSetUserName}
-            >
-              Continuar
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background">
         {/* Header */}
         <header className="fixed top-0 left-0 right-0 z-50 glass-effect border-b border-border/50">
         <div className="container mx-auto px-4">
@@ -371,6 +396,103 @@ export const Dashboard = () => {
               </div>
             )}
           </div>
+
+          {/* Discover Friends Section */}
+          <div className="glass-effect rounded-3xl p-8 mt-8">
+            <h2 className="text-2xl font-bold mb-6">Descobrir Amigos</h2>
+
+            <div className="relative mb-6">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+              <Input
+                placeholder="Buscar usuários por nome..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+
+            {/* Search Results */}
+            {isSearching && (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="w-6 h-6 animate-spin text-primary" />
+              </div>
+            )}
+
+            {!isSearching && searchResults.length > 0 && (
+              <div className="space-y-3 mb-8">
+                <h3 className="font-semibold text-sm text-muted-foreground uppercase">Resultados</h3>
+                {searchResults.map((user) => (
+                  <div key={user.id} className="flex items-center justify-between p-3 bg-background/50 rounded-lg hover:bg-background/70 transition-colors">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full gradient-primary flex items-center justify-center text-sm font-bold text-primary-foreground">
+                        {user.name[0].toUpperCase()}
+                      </div>
+                      <div>
+                        <p className="font-semibold">{user.name}</p>
+                        <p className="text-xs text-muted-foreground">{user.email}</p>
+                      </div>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant={followingIds.has(user.id) ? "outline" : "default"}
+                      onClick={() => followingIds.has(user.id) ? handleUnfollow(user.id) : handleFollow(user.id)}
+                    >
+                      {followingIds.has(user.id) ? (
+                        <>
+                          <UserMinus className="w-4 h-4 mr-2" />
+                          Seguindo
+                        </>
+                      ) : (
+                        <>
+                          <UserPlus className="w-4 h-4 mr-2" />
+                          Seguir
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {!isSearching && searchQuery.length >= 2 && searchResults.length === 0 && (
+              <p className="text-center text-muted-foreground py-8">
+                Nenhum usuário encontrado
+              </p>
+            )}
+
+            {/* Following List */}
+            {following.length > 0 && (
+              <div className="mt-8">
+                <h3 className="font-semibold text-sm text-muted-foreground uppercase mb-3">
+                  Seguindo ({following.length})
+                </h3>
+                <div className="space-y-2">
+                  {following.slice(0, 5).map((user) => (
+                    <div key={user.id} className="flex items-center justify-between p-3 bg-background/50 rounded-lg">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full gradient-primary flex items-center justify-center text-xs font-bold text-primary-foreground">
+                          {user.name[0].toUpperCase()}
+                        </div>
+                        <span className="font-medium">{user.name}</span>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => handleUnfollow(user.id)}
+                      >
+                        <UserMinus className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+                {following.length > 5 && (
+                  <p className="text-center text-sm text-muted-foreground mt-3">
+                    +{following.length - 5} mais
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </main>
 
@@ -381,8 +503,7 @@ export const Dashboard = () => {
       >
         <Plus className="w-6 h-6 text-primary-foreground" />
       </button>
-      </div>
-    </>
+    </div>
   );
 };
 

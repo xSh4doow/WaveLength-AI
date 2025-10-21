@@ -3,8 +3,9 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Music2, Upload, ArrowLeft, Wand2 } from "lucide-react";
+import { Music2, Upload, ArrowLeft, Wand2, Mic } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
+import { cn } from "@/lib/utils";
 import {
   Select,
   SelectContent,
@@ -43,6 +44,7 @@ export const Create = () => {
   const [generationStatus, setGenerationStatus] = useState("");
   const [generationProgress, setGenerationProgress] = useState(0);
   const [elapsedTime, setElapsedTime] = useState(0);
+  const [vocalType, setVocalType] = useState<"instrumental" | "with_lyrics">("instrumental");
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -104,15 +106,15 @@ export const Create = () => {
       setGenerationStatus("Analisando sua foto...");
       setGenerationProgress(10);
 
-      // Call backend API (fixed 30s instrumental)
+      // Call backend API
       const result = await generateMusic(imageFile, {
         userName,
         songName: songName || undefined,
         genre: genre || undefined,
         tags: tags || undefined,
         duration: 30,
-        hasVocals: false,
-        hasLyrics: false,
+        hasVocals: vocalType === "with_lyrics",
+        hasLyrics: vocalType === "with_lyrics",
       });
 
       setGenerationProgress(100);
@@ -135,10 +137,10 @@ export const Create = () => {
         caption: result.caption,
         genre: genre || result.metadata?.genre,
         tags: tags,
-        duration: 30,
-        has_vocals: false,
-        has_lyrics: false,
-        lyrics: null,
+        duration: result.duration || 30,
+        has_vocals: result.has_vocals,
+        has_lyrics: result.has_lyrics,
+        lyrics: result.lyrics,
         is_liked: false,
         created_at: new Date().toISOString(),
       };
@@ -345,10 +347,44 @@ export const Create = () => {
                   </p>
                 </div>
 
-                <div className="p-4 rounded-lg glass-effect">
-                  <p className="text-sm text-muted-foreground">
-                    <strong>📝 Nota:</strong> Todas as músicas são geradas como <strong>instrumental de 30 segundos</strong>
-                  </p>
+                {/* Vocal Type Selection */}
+                <div className="space-y-2">
+                  <Label>Tipo de Música</Label>
+                  <div className="grid grid-cols-2 gap-4">
+                    <button
+                      type="button"
+                      onClick={() => setVocalType("instrumental")}
+                      className={cn(
+                        "p-4 border-2 rounded-lg transition-all hover:scale-105",
+                        vocalType === "instrumental"
+                          ? "border-primary bg-primary/10"
+                          : "border-border bg-background/50"
+                      )}
+                    >
+                      <Music2 className="w-8 h-8 mx-auto mb-2" />
+                      <p className="font-semibold">Instrumental</p>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        Música sem vocais
+                      </p>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setVocalType("with_lyrics")}
+                      className={cn(
+                        "p-4 border-2 rounded-lg transition-all hover:scale-105",
+                        vocalType === "with_lyrics"
+                          ? "border-primary bg-primary/10"
+                          : "border-border bg-background/50"
+                      )}
+                    >
+                      <Mic className="w-8 h-8 mx-auto mb-2" />
+                      <p className="font-semibold">Com Letra Gerada</p>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        Letra criada pela IA
+                      </p>
+                    </button>
+                  </div>
                 </div>
 
                 <Button

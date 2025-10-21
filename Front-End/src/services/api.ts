@@ -193,3 +193,163 @@ export function getAudioUrl(audioPath: string): string {
   const cleanPath = audioPath.startsWith('/') ? audioPath.substring(1) : audioPath;
   return `${API_BASE_URL}/${cleanPath}`;
 }
+
+/**
+ * User types and authentication
+ */
+export interface User {
+  id: number;
+  name: string;
+  email: string;
+  created_at: string;
+}
+
+export interface RegisterRequest {
+  email: string;
+  password: string;
+  name: string;
+}
+
+export interface LoginRequest {
+  email: string;
+  password: string;
+}
+
+export interface AuthResponse {
+  user_id: number;
+  name: string;
+  email: string;
+}
+
+/**
+ * Register a new user
+ */
+export async function register(data: RegisterRequest): Promise<AuthResponse> {
+  const response = await fetch(`${API_BASE_URL}/auth/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: 'Unknown error' }));
+    throw new Error(error.detail || `HTTP ${response.status}`);
+  }
+
+  return await response.json();
+}
+
+/**
+ * Login user
+ */
+export async function login(data: LoginRequest): Promise<AuthResponse> {
+  const response = await fetch(`${API_BASE_URL}/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: 'Unknown error' }));
+    throw new Error(error.detail || `HTTP ${response.status}`);
+  }
+
+  return await response.json();
+}
+
+/**
+ * Get user by ID
+ */
+export async function getUser(userId: number): Promise<User> {
+  const response = await fetch(`${API_BASE_URL}/auth/user/${userId}`);
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+  }
+
+  return await response.json();
+}
+
+/**
+ * Search users by name
+ */
+export async function searchUsers(query: string, limit: number = 20): Promise<User[]> {
+  const response = await fetch(`${API_BASE_URL}/users/search?q=${encodeURIComponent(query)}&limit=${limit}`);
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+  }
+
+  return await response.json();
+}
+
+/**
+ * Follow a user
+ */
+export async function followUser(userId: number, followerId: number): Promise<{ success: boolean; message: string }> {
+  const response = await fetch(`${API_BASE_URL}/users/${userId}/follow`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ follower_id: followerId }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+  }
+
+  return await response.json();
+}
+
+/**
+ * Unfollow a user
+ */
+export async function unfollowUser(userId: number, followerId: number): Promise<{ success: boolean; message: string }> {
+  const response = await fetch(`${API_BASE_URL}/users/${userId}/unfollow?follower_id=${followerId}`, {
+    method: 'DELETE',
+  });
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+  }
+
+  return await response.json();
+}
+
+/**
+ * Get list of users the current user is following
+ */
+export async function getFollowing(userId: number): Promise<User[]> {
+  const response = await fetch(`${API_BASE_URL}/users/${userId}/following`);
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+  }
+
+  return await response.json();
+}
+
+/**
+ * Get list of followers for a user
+ */
+export async function getFollowers(userId: number): Promise<User[]> {
+  const response = await fetch(`${API_BASE_URL}/users/${userId}/followers`);
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+  }
+
+  return await response.json();
+}
+
+/**
+ * Get songs from friends (users you follow)
+ */
+export async function getFriendsSongs(userId: number, limit: number = 100, offset: number = 0): Promise<Song[]> {
+  const response = await fetch(`${API_BASE_URL}/songs/friends/${userId}?limit=${limit}&offset=${offset}`);
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+  }
+
+  return await response.json();
+}

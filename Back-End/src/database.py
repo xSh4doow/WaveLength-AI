@@ -6,6 +6,7 @@ Automatically detects based on DATABASE_URL environment variable
 
 import os
 import sqlite3
+import bcrypt
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 from contextlib import contextmanager
@@ -65,9 +66,35 @@ def init_database():
 
         if USE_POSTGRES:
             # PostgreSQL syntax
+            # Users table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS users (
+                    id SERIAL PRIMARY KEY,
+                    email TEXT UNIQUE NOT NULL,
+                    password_hash TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+
+            # Follows table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS follows (
+                    id SERIAL PRIMARY KEY,
+                    follower_id INTEGER NOT NULL,
+                    following_id INTEGER NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (follower_id) REFERENCES users(id) ON DELETE CASCADE,
+                    FOREIGN KEY (following_id) REFERENCES users(id) ON DELETE CASCADE,
+                    UNIQUE(follower_id, following_id)
+                )
+            """)
+
+            # Songs table
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS songs (
                     id TEXT PRIMARY KEY,
+                    user_id INTEGER,
                     user_name TEXT NOT NULL,
                     song_name TEXT NOT NULL,
                     image_path TEXT,
@@ -80,14 +107,41 @@ def init_database():
                     has_lyrics BOOLEAN DEFAULT FALSE,
                     lyrics TEXT,
                     is_liked BOOLEAN DEFAULT FALSE,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
                 )
             """)
         else:
             # SQLite syntax
+            # Users table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS users (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    email TEXT UNIQUE NOT NULL,
+                    password_hash TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+
+            # Follows table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS follows (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    follower_id INTEGER NOT NULL,
+                    following_id INTEGER NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (follower_id) REFERENCES users(id) ON DELETE CASCADE,
+                    FOREIGN KEY (following_id) REFERENCES users(id) ON DELETE CASCADE,
+                    UNIQUE(follower_id, following_id)
+                )
+            """)
+
+            # Songs table (add user_id column)
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS songs (
                     id TEXT PRIMARY KEY,
+                    user_id INTEGER,
                     user_name TEXT NOT NULL,
                     song_name TEXT NOT NULL,
                     image_path TEXT,
@@ -100,7 +154,8 @@ def init_database():
                     has_lyrics BOOLEAN DEFAULT 0,
                     lyrics TEXT,
                     is_liked BOOLEAN DEFAULT 0,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
                 )
             """)
 
@@ -286,6 +341,217 @@ def search_songs(query: str, limit: int = 50) -> List[Dict[str, Any]]:
                 LIMIT ?
             """, (search_pattern, search_pattern, search_pattern, limit))
 
+        rows = cursor.fetchall()
+        return [dict(row) for row in rows]
+
+
+# ---------- AUTH FUNCTIONS ----------
+
+def hash_password(password: str) -> str:
+    """Hash a password using bcrypt."""
+    salt = bcrypt.gensalt()
+    hashed = bcrypt.hashpw(password.encode('utf-8'), salt)
+    return hashed.decode('utf-8')
+
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    """Verify a password against a hash."""
+    return bcrypt.checkpw(plain_password.encode('utf-8'), hashed_password.encode('utf-8'))
+
+
+def create_user(email: str, password: str, name: str) -> Dict[str, Any]:
+    """Create a new user. Returns user dict with id."""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        password_hash = hash_password(password)
+
+        try:
+            if USE_POSTGRES:
+                cursor.execute("""
+                    INSERT INTO users (email, password_hash, name)
+                    VALUES (%s, %s, %s)
+                    RETURNING id, email, name, created_at
+                """, (email, password_hash, name))
+                row = cursor.fetchone()
+                return dict(row)
+            else:
+                cursor.execute("""
+                    INSERT INTO users (email, password_hash, name)
+                    VALUES (?, ?, ?)
+                """, (email, password_hash, name))
+                user_id = cursor.lastrowid
+                cursor.execute("SELECT id, email, name, created_at FROM users WHERE id = ?", (user_id,))
+                row = cursor.fetchone()
+                return dict(row)
+        except Exception as e:
+            if "UNIQUE constraint failed" in str(e) or "duplicate key" in str(e):
+                raise ValueError("Email already registered")
+            raise
+
+
+def get_user_by_email(email: str) -> Optional[Dict[str, Any]]:
+    """Get user by email."""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        if USE_POSTGRES:
+            cursor.execute("SELECT * FROM users WHERE email = %s", (email,))
+        else:
+            cursor.execute("SELECT * FROM users WHERE email = ?", (email,))
+        row = cursor.fetchone()
+        return dict(row) if row else None
+
+
+def get_user_by_id(user_id: int) -> Optional[Dict[str, Any]]:
+    """Get user by ID."""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        if USE_POSTGRES:
+            cursor.execute("SELECT id, email, name, created_at FROM users WHERE id = %s", (user_id,))
+        else:
+            cursor.execute("SELECT id, email, name, created_at FROM users WHERE id = ?", (user_id,))
+        row = cursor.fetchone()
+        return dict(row) if row else None
+
+
+def search_users(query: str, limit: int = 50) -> List[Dict[str, Any]]:
+    """Search users by name. Returns list of users (without password_hash)."""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        search_pattern = f"%{query}%"
+
+        if USE_POSTGRES:
+            cursor.execute("""
+                SELECT id, email, name, created_at
+                FROM users
+                WHERE name ILIKE %s
+                LIMIT %s
+            """, (search_pattern, limit))
+        else:
+            cursor.execute("""
+                SELECT id, email, name, created_at
+                FROM users
+                WHERE name LIKE ?
+                LIMIT ?
+            """, (search_pattern, limit))
+
+        rows = cursor.fetchall()
+        return [dict(row) for row in rows]
+
+
+# ---------- FOLLOW FUNCTIONS ----------
+
+def create_follow(follower_id: int, following_id: int) -> bool:
+    """Create a follow relationship. Returns True if created."""
+    if follower_id == following_id:
+        raise ValueError("Cannot follow yourself")
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        try:
+            if USE_POSTGRES:
+                cursor.execute("""
+                    INSERT INTO follows (follower_id, following_id)
+                    VALUES (%s, %s)
+                """, (follower_id, following_id))
+            else:
+                cursor.execute("""
+                    INSERT INTO follows (follower_id, following_id)
+                    VALUES (?, ?)
+                """, (follower_id, following_id))
+            return True
+        except Exception as e:
+            if "UNIQUE constraint failed" in str(e) or "duplicate key" in str(e):
+                return False  # Already following
+            raise
+
+
+def delete_follow(follower_id: int, following_id: int) -> bool:
+    """Delete a follow relationship. Returns True if deleted."""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        if USE_POSTGRES:
+            cursor.execute("""
+                DELETE FROM follows
+                WHERE follower_id = %s AND following_id = %s
+            """, (follower_id, following_id))
+        else:
+            cursor.execute("""
+                DELETE FROM follows
+                WHERE follower_id = ? AND following_id = ?
+            """, (follower_id, following_id))
+        return cursor.rowcount > 0
+
+
+def get_following(user_id: int) -> List[Dict[str, Any]]:
+    """Get list of users that user_id is following."""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        if USE_POSTGRES:
+            cursor.execute("""
+                SELECT u.id, u.email, u.name, u.created_at
+                FROM users u
+                JOIN follows f ON u.id = f.following_id
+                WHERE f.follower_id = %s
+                ORDER BY f.created_at DESC
+            """, (user_id,))
+        else:
+            cursor.execute("""
+                SELECT u.id, u.email, u.name, u.created_at
+                FROM users u
+                JOIN follows f ON u.id = f.following_id
+                WHERE f.follower_id = ?
+                ORDER BY f.created_at DESC
+            """, (user_id,))
+        rows = cursor.fetchall()
+        return [dict(row) for row in rows]
+
+
+def get_followers(user_id: int) -> List[Dict[str, Any]]:
+    """Get list of users following user_id."""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        if USE_POSTGRES:
+            cursor.execute("""
+                SELECT u.id, u.email, u.name, u.created_at
+                FROM users u
+                JOIN follows f ON u.id = f.follower_id
+                WHERE f.following_id = %s
+                ORDER BY f.created_at DESC
+            """, (user_id,))
+        else:
+            cursor.execute("""
+                SELECT u.id, u.email, u.name, u.created_at
+                FROM users u
+                JOIN follows f ON u.id = f.follower_id
+                WHERE f.following_id = ?
+                ORDER BY f.created_at DESC
+            """, (user_id,))
+        rows = cursor.fetchall()
+        return [dict(row) for row in rows]
+
+
+def get_friends_songs(user_id: int, limit: int = 100, offset: int = 0) -> List[Dict[str, Any]]:
+    """Get songs from users that user_id is following."""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        if USE_POSTGRES:
+            cursor.execute("""
+                SELECT s.*
+                FROM songs s
+                JOIN follows f ON s.user_id = f.following_id
+                WHERE f.follower_id = %s
+                ORDER BY s.created_at DESC
+                LIMIT %s OFFSET %s
+            """, (user_id, limit, offset))
+        else:
+            cursor.execute("""
+                SELECT s.*
+                FROM songs s
+                JOIN follows f ON s.user_id = f.following_id
+                WHERE f.follower_id = ?
+                ORDER BY s.created_at DESC
+                LIMIT ? OFFSET ?
+            """, (user_id, limit, offset))
         rows = cursor.fetchall()
         return [dict(row) for row in rows]
 

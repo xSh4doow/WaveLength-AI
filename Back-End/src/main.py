@@ -2,9 +2,10 @@ import os
 import io
 import uuid
 from typing import Optional, List
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Query
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Query, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
+from pydantic import BaseModel, EmailStr
 from PIL import Image
 import numpy as np
 
@@ -23,6 +24,22 @@ from src import database
 
 # Import schemas
 from src.models.schemas import SongResponse, SongUpdate
+
+
+# ---------- PYDANTIC MODELS FOR AUTH ----------
+class RegisterRequest(BaseModel):
+    email: EmailStr
+    password: str
+    name: str
+
+
+class LoginRequest(BaseModel):
+    email: EmailStr
+    password: str
+
+
+class FollowRequest(BaseModel):
+    follower_id: int
 
 # ---------- APP SETUP ----------
 app = FastAPI(
@@ -80,19 +97,19 @@ def init_ai_handlers():
         BLIP_READY = False
 
     try:
-        # Initialize Udio API if enabled and API key provided
-        if config.USE_UDIO and config.UDIO_API_KEY:
+        # Initialize GoAPI.ai (Udio/Suno) if enabled and API key provided
+        if config.USE_UDIO and config.GOAPI_API_KEY:
             if udio_handler is None:
                 udio_handler = UdioHandler(
-                    api_key=config.UDIO_API_KEY,
-                    api_url=config.UDIO_API_URL
+                    api_key=config.GOAPI_API_KEY,
+                    api_url=config.GOAPI_API_URL
                 )
                 UDIO_READY = True
-                print("[main] Udio API handler initialized successfully")
+                print("[main] GoAPI.ai handler initialized successfully")
         else:
-            print("[main] Udio API disabled or no API key provided")
+            print("[main] GoAPI.ai disabled or no API key provided")
     except Exception as e:
-        print(f"[main] Failed to initialize Udio API: {repr(e)}")
+        print(f"[main] Failed to initialize GoAPI.ai: {repr(e)}")
         UDIO_READY = False
 
 
@@ -147,6 +164,107 @@ def health():
     }
 
 
+# ---------- AUTH ENDPOINTS ----------
+
+@app.post("/auth/register")
+def register(req: RegisterRequest):
+    """Register a new user."""
+    try:
+        user = database.create_user(req.email, req.password, req.name)
+        return {
+            "user_id": user["id"],
+            "name": user["name"],
+            "email": user["email"]
+        }
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        print(f"[register] Error: {e}")
+        raise HTTPException(500, "Registration failed")
+
+
+@app.post("/auth/login")
+def login(req: LoginRequest):
+    """Login user."""
+    user = database.get_user_by_email(req.email)
+
+    if not user:
+        raise HTTPException(401, "Invalid email or password")
+
+    if not database.verify_password(req.password, user["password_hash"]):
+        raise HTTPException(401, "Invalid email or password")
+
+    return {
+        "user_id": user["id"],
+        "name": user["name"],
+        "email": user["email"]
+    }
+
+
+@app.get("/auth/user/{user_id}")
+def get_user(user_id: int):
+    """Get user by ID."""
+    user = database.get_user_by_id(user_id)
+
+    if not user:
+        raise HTTPException(404, "User not found")
+
+    return user
+
+
+# ---------- USER/FOLLOW ENDPOINTS ----------
+
+@app.get("/users/search")
+def search_users_endpoint(q: str = Query(..., min_length=1), limit: int = Query(50, le=200)):
+    """Search users by name."""
+    users = database.search_users(q, limit)
+    return users
+
+
+@app.post("/users/{user_id}/follow")
+def follow_user(user_id: int, req: FollowRequest):
+    """Follow a user."""
+    try:
+        success = database.create_follow(req.follower_id, user_id)
+        return {"success": success, "message": "Following" if success else "Already following"}
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.delete("/users/{user_id}/unfollow")
+def unfollow_user(user_id: int, follower_id: int = Query(...)):
+    """Unfollow a user."""
+    success = database.delete_follow(follower_id, user_id)
+    return {"success": success}
+
+
+@app.get("/users/{user_id}/following")
+def get_following_endpoint(user_id: int):
+    """Get list of users that user is following."""
+    following = database.get_following(user_id)
+    return following
+
+
+@app.get("/users/{user_id}/followers")
+def get_followers_endpoint(user_id: int):
+    """Get list of followers."""
+    followers = database.get_followers(user_id)
+    return followers
+
+
+@app.get("/songs/friends/{user_id}")
+def get_friends_songs_endpoint(
+    user_id: int,
+    limit: int = Query(100, le=500),
+    offset: int = Query(0, ge=0)
+):
+    """Get songs from users that user_id is following."""
+    songs = database.get_friends_songs(user_id, limit, offset)
+    return songs
+
+
+# ---------- MUSIC GENERATION ----------
+
 @app.post("/generate")
 async def generate(
     image: UploadFile = File(...),
@@ -197,6 +315,9 @@ async def generate(
 
     # Final decision: use mock if BLIP not ready or explicitly requested
     use_mock = (engine == "mock") or (not BLIP_READY)
+
+    # Initialize lyrics variable
+    lyrics = None
 
     try:
         if use_mock:
@@ -254,17 +375,32 @@ async def generate(
 
                 # Generate and download from Udio
                 try:
-                    udio_handler.generate_and_download(
+                    # Determine song title
+                    final_song_name = song_name if song_name and song_name.strip() else "Generated Song"
+
+                    # Generate and download
+                    _, api_result = udio_handler.generate_and_download(
                         prompt=prompt,
                         save_path=audio_path,
+                        title=final_song_name,
                         lyrics_type=lyrics_type,
                         timeout=300  # 5 minutes timeout
                     )
-                    print(f"[generate] Udio generation successful!")
+                    print(f"[generate] GoAPI.ai generation successful!")
+
+                    # Extract lyrics from API response if available
+                    # GoAPI.ai structure: result.data.output.lyrics or result.data.lyrics
+                    data = api_result.get("data", {})
+                    api_lyrics = data.get("lyrics") or data.get("output", {}).get("lyrics")
+
+                    if api_lyrics and (has_lyrics and has_vocals):
+                        lyrics = api_lyrics  # Use API-generated lyrics
+                        print(f"[generate] Lyrics received from API ({len(api_lyrics)} chars)")
+
                     # Audio already saved, set flag to skip save_audio later
                     audio_saved = True
                 except Exception as udio_error:
-                    print(f"[generate] Udio API failed: {udio_error}, falling back to mock")
+                    print(f"[generate] GoAPI.ai failed: {udio_error}, falling back to mock")
                     audio_data, sample_rate = generate_mock_audio(duration=duration)
                     audio_saved = False
                     use_mock = True

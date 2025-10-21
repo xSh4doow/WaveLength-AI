@@ -3,33 +3,36 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Music2 } from "lucide-react";
-import { toast } from "@/hooks/use-toast";
+import { Music2, Loader2 } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
 
 export const Auth = () => {
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
+  const { login, register } = useAuth();
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    // Mock authentication - just navigate to dashboard
-    if (isLogin) {
-      toast({
-        title: "Login realizado!",
-        description: "Bem-vindo de volta ao Wavelength",
-      });
-    } else {
-      toast({
-        title: "Conta criada!",
-        description: "Sua conta foi criada com sucesso",
-      });
+    setIsLoading(true);
+
+    try {
+      if (isLogin) {
+        await login(email, password);
+      } else {
+        await register(email, password, name);
+      }
+      // Navigate to dashboard on success
+      navigate("/dashboard");
+    } catch (error) {
+      // Error handling is done in AuthContext (toast)
+      console.error("Auth error:", error);
+    } finally {
+      setIsLoading(false);
     }
-    
-    navigate("/dashboard");
   };
 
   return (
@@ -89,8 +92,15 @@ export const Auth = () => {
               />
             </div>
 
-            <Button type="submit" className="w-full" size="lg">
-              {isLogin ? "Entrar" : "Criar Conta"}
+            <Button type="submit" className="w-full" size="lg" disabled={isLoading}>
+              {isLoading ? (
+                <>
+                  <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                  {isLogin ? "Entrando..." : "Criando conta..."}
+                </>
+              ) : (
+                <>{isLogin ? "Entrar" : "Criar Conta"}</>
+              )}
             </Button>
           </form>
 
