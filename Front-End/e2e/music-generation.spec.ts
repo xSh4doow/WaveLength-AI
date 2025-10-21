@@ -153,7 +153,7 @@ test.describe('Geração de Música', () => {
     await page.waitForTimeout(500);
 
     // Verificar que não há opções de vocal/letras
-    const page Content = await page.content();
+    const pageContent = await page.content();
     expect(pageContent.toLowerCase()).not.toContain('vocal');
     expect(pageContent.toLowerCase()).not.toContain('letra');
   });
