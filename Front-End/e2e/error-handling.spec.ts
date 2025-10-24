@@ -1,10 +1,18 @@
 import { test, expect } from '@playwright/test';
+import { loginTestUser } from './helpers/auth';
 
 test.describe('Tratamento de Erros', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('http://localhost:8080');
+    await page.evaluate(() => localStorage.clear());
+  });
+
   test('deve tratar erro de conexão com API', async ({ page }) => {
     // Simular falha de rede
     await page.route('**/api/**', route => route.abort('failed'));
 
+    // Login first since /create is protected
+    await loginTestUser(page);
     await page.goto('/create');
 
     const fileInput = page.locator('input[type="file"]');
@@ -17,6 +25,8 @@ test.describe('Tratamento de Erros', () => {
   });
 
   test('deve validar formato de arquivo', async ({ page }) => {
+    // Login first since /create is protected
+    await loginTestUser(page);
     await page.goto('/create');
 
     // Tentar upload de arquivo não-imagem (se houver validação)
@@ -30,6 +40,8 @@ test.describe('Tratamento de Erros', () => {
   });
 
   test('deve exibir mensagem para campos vazios', async ({ page }) => {
+    // Login first since /create is protected
+    await loginTestUser(page);
     await page.goto('/create');
 
     // Verificar que botão está desabilitado quando campos vazios
@@ -38,6 +50,8 @@ test.describe('Tratamento de Erros', () => {
   });
 
   test('deve tratar timeout de geração', async ({ page }) => {
+    // Login first since /create is protected
+    await loginTestUser(page);
     await page.goto('/create');
 
     // Mock de resposta lenta (timeout)
@@ -60,6 +74,8 @@ test.describe('Tratamento de Erros', () => {
   });
 
   test('deve permitir recuperação após erro', async ({ page }) => {
+    // Login first since /create is protected
+    await loginTestUser(page);
     await page.goto('/create');
 
     let requestCount = 0;
@@ -94,6 +110,8 @@ test.describe('Tratamento de Erros', () => {
   });
 
   test('deve exibir estado de loading adequado', async ({ page }) => {
+    // Login first since /create is protected
+    await loginTestUser(page);
     await page.goto('/create');
 
     // Mock de resposta lenta
@@ -112,6 +130,8 @@ test.describe('Tratamento de Erros', () => {
   });
 
   test('deve validar tamanho máximo de arquivo', async ({ page }) => {
+    // Login first since /create is protected
+    await loginTestUser(page);
     await page.goto('/create');
 
     // Verificar que input existe (pode estar hidden)

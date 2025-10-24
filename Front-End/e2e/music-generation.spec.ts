@@ -175,8 +175,8 @@ test('deve gerar música de 30s instrumental', async ({ page }) => {
 
     await page.waitForTimeout(500);
 
-    // Verificar que não há opções de vocal/letras
-    const pageContent = await page.content();
-    expect(pageContent.toLowerCase()).not.toContain('vocal');
-    expect(pageContent.toLowerCase()).not.toContain('letra');
+    // Verificar que o botão "Instrumental" está selecionado por padrão
+    const instrumentalButton = page.locator('button:has(p:has-text("Instrumental"))').first();
+    const classes = await instrumentalButton.getAttribute('class');
+    expect(classes).toContain('border-primary'); // Should be selected by default
   });

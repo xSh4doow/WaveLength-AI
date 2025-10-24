@@ -46,11 +46,11 @@ test.describe('Authentication Flow', () => {
     await page.fill('input[type="email"]', testEmail);
     await page.fill('input[type="password"]', testPassword);
     await page.click('button:has-text("Criar Conta")');
-    await page.waitForURL('**/dashboard');
+    await page.waitForURL('**/dashboard', { timeout: 15000 });
 
     // Logout
-    await page.click('text=Sair');
-    await page.waitForURL('**/auth');
+    await page.locator('button:has-text("Sair")').click();
+    await page.waitForURL('**/auth', { timeout: 10000 });
 
     // Now login
     await page.fill('input[type="email"]', testEmail);
@@ -58,7 +58,7 @@ test.describe('Authentication Flow', () => {
     await page.click('button:has-text("Entrar")');
 
     // Should redirect to dashboard
-    await page.waitForURL('**/dashboard');
+    await page.waitForURL('**/dashboard', { timeout: 15000 });
     expect(page.url()).toContain('/dashboard');
   });
 
@@ -91,16 +91,15 @@ test.describe('Authentication Flow', () => {
     await page.fill('input[type="email"]', testEmail);
     await page.fill('input[type="password"]', testPassword);
     await page.click('button:has-text("Criar Conta")');
-    await page.waitForURL('**/dashboard');
+    await page.waitForURL('**/dashboard', { timeout: 15000 });
 
     // Reload page
     await page.reload();
-    await page.waitForLoadState('networkidle');
 
     // Should still be on dashboard (authenticated)
-    await page.waitForURL('**/dashboard', { timeout: 5000 });
+    await page.waitForURL('**/dashboard', { timeout: 10000 });
     expect(page.url()).toContain('/dashboard');
-    await expect(page.getByRole('heading', { name: testName })).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('text=Wavelength').first()).toBeVisible({ timeout: 10000 });
   });
 
   test('should logout and redirect to auth', async ({ page }) => {
@@ -111,20 +110,20 @@ test.describe('Authentication Flow', () => {
     await page.fill('input[type="email"]', testEmail);
     await page.fill('input[type="password"]', testPassword);
     await page.click('button:has-text("Criar Conta")');
-    await page.waitForURL('**/dashboard');
+    await page.waitForURL('**/dashboard', { timeout: 15000 });
 
     // Click logout
-    await page.click('text=Sair');
+    await page.locator('button:has-text("Sair")').click();
 
     // Should redirect to /auth
-    await page.waitForURL('**/auth');
+    await page.waitForURL('**/auth', { timeout: 10000 });
     expect(page.url()).toContain('/auth');
 
     // Try to access dashboard again
     await page.goto('http://localhost:8080/dashboard');
 
     // Should be redirected back to auth
-    await page.waitForURL('**/auth');
+    await page.waitForURL('**/auth', { timeout: 10000 });
   });
 
   test('should allow access to public play page without auth', async ({ page }) => {

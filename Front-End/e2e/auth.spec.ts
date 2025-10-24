@@ -1,6 +1,12 @@
 import { test, expect } from '@playwright/test';
+import { loginTestUser } from './helpers/auth';
 
 test.describe('Autenticação', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('http://localhost:8080');
+    await page.evaluate(() => localStorage.clear());
+  });
+
   test('deve exibir página de login/registro', async ({ page }) => {
     await page.goto('/auth');
 
@@ -37,24 +43,31 @@ test.describe('Autenticação', () => {
   });
 
   test('deve redirecionar após login bem-sucedido', async ({ page }) => {
+    // First register a user
+    const email = `test${Date.now()}@test.com`;
+    const password = 'TestPass123!';
+    const userName = 'Test User';
+
+    await page.goto('/auth');
+    await page.click('text=Não tem conta? Registre-se');
+    await page.fill('input[type="text"]', userName);
+    await page.fill('input[type="email"]', email);
+    await page.fill('input[type="password"]', password);
+    await page.click('button:has-text("Criar Conta")');
+
+    // Wait for redirect after registration
+    await page.waitForURL(/\/(dashboard|create)/, { timeout: 10000 });
+
+    // Now logout and login again to test login flow
+    await page.evaluate(() => localStorage.clear());
     await page.goto('/auth');
 
-    // Preencher formulário (mock)
-    await page.fill('input[type="email"]', 'test@example.com');
-    await page.fill('input[type="password"]', 'password123');
-
-    // Mock da resposta da API
-    await page.route('**/api/auth/**', async route => {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ token: 'mock-token', user: { email: 'test@example.com' } })
-      });
-    });
-
+    // Login with the same credentials
+    await page.fill('input[type="email"]', email);
+    await page.fill('input[type="password"]', password);
     await page.locator('button[type="submit"]').first().click();
 
     // Verificar redirecionamento (Dashboard ou Home)
-    await page.waitForURL(/\/(dashboard|create|$)/, { timeout: 5000 });
+    await page.waitForURL(/\/(dashboard|create)/, { timeout: 10000 });
   });
 });

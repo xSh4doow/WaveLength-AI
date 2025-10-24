@@ -47,12 +47,13 @@ test.describe('Navegação', () => {
     await loginTestUser(page);
 
     // Navigate to library from dashboard
-    const libraryLink = page.locator('button:has-text("Criações")');
+    const libraryLink = page.locator('button:has-text("Criações")').first();
     await libraryLink.click();
 
     // Verify navigation
     await expect(page).toHaveURL(/\/library/);
-    await expect(page.locator('text=Criações')).toBeVisible();
+    // Verify library page loaded - check for search input which is unique to library
+    await expect(page.locator('input[placeholder*="Buscar"]')).toBeVisible();
   });
 
   test('deve exibir 404 para rotas inexistentes', async ({ page }) => {
