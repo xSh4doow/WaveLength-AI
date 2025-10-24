@@ -4,33 +4,19 @@
  */
 
 import { test, expect } from '@playwright/test';
+import { loginTestUser } from './helpers/auth';
 
 test.describe('Vocals and Lyrics', () => {
-  const testEmail = `vocals${Date.now()}@test.com`;
-  const password = 'TestPass123!';
-
   test.beforeEach(async ({ page }) => {
     await page.goto('http://localhost:8080');
     await page.evaluate(() => localStorage.clear());
 
-    // Register and login
-    await page.goto('http://localhost:8080/auth');
-    await page.click('text=Não tem conta? Registre-se');
-    await page.fill('input[type="text"]', 'Vocals Test User');
-    await page.fill('input[type="email"]', testEmail);
-    await page.fill('input[type="password"]', password);
-    await page.click('button:has-text("Criar Conta")');
-    await page.waitForURL('**/dashboard', { timeout: 10000 });
-
-    // Wait for dashboard to be fully loaded
-    await page.waitForLoadState('networkidle');
+    // Login using helper
+    await loginTestUser(page, 'Vocals Test User');
   });
 
   test('should show radio buttons for music type', async ({ page }) => {
     await page.goto('http://localhost:8080/create');
-
-    // Wait for page to load
-    await page.waitForLoadState('networkidle');
 
     // Should show both options (text is inside <p> tags within buttons)
     await expect(page.locator('p.font-semibold:has-text("Instrumental")')).toBeVisible({ timeout: 5000 });
@@ -39,7 +25,6 @@ test.describe('Vocals and Lyrics', () => {
 
   test('should select instrumental type by default', async ({ page }) => {
     await page.goto('http://localhost:8080/create');
-    await page.waitForLoadState('networkidle');
 
     // Instrumental should be selected by default (find button containing the <p> with text)
     const instrumentalButton = page.locator('button:has(p:has-text("Instrumental"))').first();
@@ -50,7 +35,6 @@ test.describe('Vocals and Lyrics', () => {
 
   test('should switch between music types', async ({ page }) => {
     await page.goto('http://localhost:8080/create');
-    await page.waitForLoadState('networkidle');
 
     // Click on "Com Letra Gerada" button
     const lyricsButton = page.locator('button:has(p:has-text("Com Letra Gerada"))').first();

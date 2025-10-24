@@ -1,12 +1,21 @@
 import { test, expect } from '@playwright/test';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { loginTestUser } from './helpers/auth';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 test.describe('Geração de Música', () => {
+  // Clear localStorage before each test
+  test.beforeEach(async ({ page }) => {
+    await page.goto('http://localhost:8080');
+    await page.evaluate(() => localStorage.clear());
+  });
+
   test('deve exibir página de criação', async ({ page }) => {
+    // Login first since /create is a protected route
+    await loginTestUser(page);
     await page.goto('/create');
 
     // Verificar que a página carregou
@@ -17,6 +26,8 @@ test.describe('Geração de Música', () => {
   });
 
   test('deve validar upload de imagem obrigatório', async ({ page }) => {
+    // Login first
+    await loginTestUser(page);
     await page.goto('/create');
 
     // Verificar que botão está desabilitado sem imagem
@@ -25,6 +36,8 @@ test.describe('Geração de Música', () => {
   });
 
   test('deve fazer upload de imagem', async ({ page }) => {
+    // Login first
+    await loginTestUser(page);
     await page.goto('/create');
 
     // Criar um buffer de imagem fake para teste
@@ -42,9 +55,7 @@ test.describe('Geração de Música', () => {
   });
 
   test('deve gerar música com sucesso (mock)', async ({ page }) => {
-    await page.goto('/create');
-
-    // Mock da API de geração
+    // Mock da API de geração BEFORE navigation
     await page.route('**/generate', async route => {
       await route.fulfill({
         status: 200,
@@ -56,6 +67,10 @@ test.describe('Geração de Música', () => {
         })
       });
     });
+
+    // Login and navigate to create
+    await loginTestUser(page);
+    await page.goto('/create');
 
     // Upload de imagem fake
     const buffer = Buffer.from('fake-image-data');
@@ -82,8 +97,6 @@ test.describe('Geração de Música', () => {
   });
 
   test('deve exibir erro em caso de falha', async ({ page }) => {
-    await page.goto('/create');
-
     // Mock de erro na API
     await page.route('**/generate', async route => {
       await route.fulfill({
@@ -92,6 +105,10 @@ test.describe('Geração de Música', () => {
         body: JSON.stringify({ error: 'Erro ao gerar música' })
       });
     });
+
+    // Login and navigate
+    await loginTestUser(page);
+    await page.goto('/create');
 
     // Upload fake
     const buffer = Buffer.from('fake-image-data');
@@ -115,11 +132,13 @@ test.describe('Geração de Música', () => {
   });
 });
 
-  test('deve gerar música de 30s instrumental', async ({ page }) => {
-    await page.goto('/create');
+test('deve gerar música de 30s instrumental', async ({ page }) => {
+  // Clear localStorage
+  await page.goto('http://localhost:8080');
+  await page.evaluate(() => localStorage.clear());
 
-    // Mock da API com dados atualizados
-    await page.route('**/generate', async route => {
+  // Mock da API com dados atualizados
+  await page.route('**/generate', async route => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -140,6 +159,10 @@ test.describe('Geração de Música', () => {
         })
       });
     });
+
+    // Login and navigate
+    await loginTestUser(page);
+    await page.goto('/create');
 
     // Upload fake image
     const buffer = Buffer.from('fake-image-data');
