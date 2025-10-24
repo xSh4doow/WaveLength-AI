@@ -1,6 +1,23 @@
 import { test, expect } from '@playwright/test';
 import { loginTestUser } from './helpers/auth';
 
+// Helper to navigate to library (works on both desktop and mobile)
+async function navigateToLibrary(page: any) {
+  // Wait for page to be ready and any toasts to disappear
+  await page.waitForTimeout(2500);
+
+  // Try desktop navigation first
+  const desktopNav = page.locator('button:has-text("Criações")').first();
+  if (await desktopNav.isVisible()) {
+    await desktopNav.click();
+  } else {
+    // Use mobile menu - force click to bypass any remaining toasts
+    const menuButton = page.locator('button:has(svg.lucide-menu)');
+    await menuButton.click({ force: true });
+    await page.locator('button:has-text("Criações")').last().click();
+  }
+}
+
 test.describe('Navegação', () => {
   // Clear localStorage before each test to ensure clean state
   test.beforeEach(async ({ page }) => {
@@ -47,8 +64,7 @@ test.describe('Navegação', () => {
     await loginTestUser(page);
 
     // Navigate to library from dashboard
-    const libraryLink = page.locator('button:has-text("Criações")').first();
-    await libraryLink.click();
+    await navigateToLibrary(page);
 
     // Verify navigation
     await expect(page).toHaveURL(/\/library/);
@@ -88,7 +104,7 @@ test.describe('Navegação', () => {
     await expect(nav).toBeVisible();
 
     // Navegar para outra página protegida
-    await page.click('button:has-text("Criações")');
+    await navigateToLibrary(page);
     await page.waitForURL('**/library');
 
     // Header deve continuar presente

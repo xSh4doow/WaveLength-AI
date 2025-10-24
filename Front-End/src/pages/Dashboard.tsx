@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Music2, Plus, Play, MoreVertical, Download, Trash2, Loader2, PlayCircle, Heart, Search, UserPlus, UserMinus } from "lucide-react";
+import { Music2, Plus, Play, MoreVertical, Download, Trash2, Loader2, PlayCircle, Heart, Search, UserPlus, UserMinus, Menu } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -16,6 +16,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 import { getSongsByUser, getAudioUrl, deleteSong, searchUsers, followUser, unfollowUser, getFollowing, type Song, type User } from "@/services/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { useQueue } from "@/contexts/QueueContext";
@@ -31,6 +38,9 @@ export const Dashboard = () => {
   const [songs, setSongs] = useState<Song[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Mobile menu state
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   // Friends functionality
   const [searchQuery, setSearchQuery] = useState("");
@@ -195,23 +205,66 @@ export const Dashboard = () => {
               </span>
             </div>
 
+            {/* Desktop Navigation */}
             <nav className="hidden md:flex items-center gap-6">
               <button className="text-foreground hover:text-primary transition-colors">
                 Início
               </button>
-              <button 
+              <button
                 onClick={() => navigate("/library")}
                 className="text-muted-foreground hover:text-primary transition-colors"
               >
                 Criações
               </button>
-              <button 
+              <button
                 onClick={handleLogout}
                 className="text-muted-foreground hover:text-primary transition-colors"
               >
                 Sair
               </button>
             </nav>
+
+            {/* Mobile Navigation */}
+            <Sheet open={isMobileMenuOpen} onOpenChange={setIsMobileMenuOpen}>
+              <SheetTrigger asChild className="md:hidden">
+                <Button variant="ghost" size="icon">
+                  <Menu className="w-6 h-6" />
+                </Button>
+              </SheetTrigger>
+              <SheetContent>
+                <SheetHeader>
+                  <SheetTitle>Menu</SheetTitle>
+                </SheetHeader>
+                <nav className="flex flex-col gap-4 mt-6">
+                  <button
+                    onClick={() => {
+                      setIsMobileMenuOpen(false);
+                    }}
+                    className="text-left text-lg font-semibold text-foreground hover:text-primary transition-colors py-2"
+                  >
+                    Início
+                  </button>
+                  <button
+                    onClick={() => {
+                      navigate("/library");
+                      setIsMobileMenuOpen(false);
+                    }}
+                    className="text-left text-lg font-semibold text-muted-foreground hover:text-primary transition-colors py-2"
+                  >
+                    Criações
+                  </button>
+                  <button
+                    onClick={() => {
+                      handleLogout();
+                      setIsMobileMenuOpen(false);
+                    }}
+                    className="text-left text-lg font-semibold text-muted-foreground hover:text-primary transition-colors py-2"
+                  >
+                    Sair
+                  </button>
+                </nav>
+              </SheetContent>
+            </Sheet>
           </div>
         </div>
       </header>

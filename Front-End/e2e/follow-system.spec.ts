@@ -6,6 +6,23 @@
 import { test, expect } from '@playwright/test';
 import { loginTestUser } from './helpers/auth';
 
+// Helper to navigate to library (works on both desktop and mobile)
+async function navigateToLibrary(page: any) {
+  // Wait for page to be ready and any toasts to disappear
+  await page.waitForTimeout(2500);
+
+  // Try desktop navigation first
+  const desktopNav = page.locator('button:has-text("Criações")').first();
+  if (await desktopNav.isVisible()) {
+    await desktopNav.click();
+  } else {
+    // Use mobile menu - force click to bypass any remaining toasts
+    const menuButton = page.locator('button:has(svg.lucide-menu)');
+    await menuButton.click({ force: true });
+    await page.locator('button:has-text("Criações")').last().click();
+  }
+}
+
 test.describe('Follow System', () => {
   const password = 'TestPass123!';
 
@@ -87,7 +104,7 @@ test.describe('Follow System', () => {
     await page.waitForTimeout(1000);
 
     // Go to Library
-    await page.click('text=Criações');
+    await navigateToLibrary(page);
     await page.waitForURL('**/library');
 
     // Click on "Amigos" tab

@@ -10,6 +10,23 @@
 import { test, expect } from '@playwright/test';
 import { loginTestUser } from './helpers/auth';
 
+// Helper to navigate to library (works on both desktop and mobile)
+async function navigateToLibrary(page: any) {
+  // Wait for page to be ready and any toasts to disappear
+  await page.waitForTimeout(2500);
+
+  // Try desktop navigation first
+  const desktopNav = page.locator('button:has-text("Criações")').first();
+  if (await desktopNav.isVisible()) {
+    await desktopNav.click();
+  } else {
+    // Use mobile menu - force click to bypass any remaining toasts
+    const menuButton = page.locator('button:has(svg.lucide-menu)');
+    await menuButton.click({ force: true });
+    await page.locator('button:has-text("Criações")').last().click();
+  }
+}
+
 test.describe('New Features - Session 3', () => {
 
   test.describe('Dashboard Features', () => {
@@ -68,7 +85,7 @@ test.describe('New Features - Session 3', () => {
     test('should display library page', async ({ page }) => {
       // Login and navigate to library
       await loginTestUser(page);
-      await page.locator('button:has-text("Criações")').first().click();
+      await navigateToLibrary(page);
 
       // Verify we're on library
       await expect(page).toHaveURL(/\/library/);
@@ -79,7 +96,7 @@ test.describe('New Features - Session 3', () => {
     test('should have search and filter controls', async ({ page }) => {
       // Login and navigate to library
       await loginTestUser(page);
-      await page.locator('button:has-text("Criações")').first().click();
+      await navigateToLibrary(page);
       await page.waitForURL('**/library');
 
       // Search input
@@ -94,7 +111,7 @@ test.describe('New Features - Session 3', () => {
     test('should allow searching songs', async ({ page }) => {
       // Login and navigate to library
       await loginTestUser(page);
-      await page.locator('button:has-text("Criações")').first().click();
+      await navigateToLibrary(page);
       await page.waitForURL('**/library');
 
       const searchInput = page.locator('input[placeholder*="Buscar"]');
@@ -110,8 +127,7 @@ test.describe('New Features - Session 3', () => {
       await page.evaluate(() => localStorage.clear());
     });
 
-    test.skip('should show all new input fields', async ({ page }) => {
-      // TODO: Update test when duration slider and music type fields are implemented
+    test('should show all new input fields', async ({ page }) => {
       // Login and navigate to create page
       await loginTestUser(page);
       await page.goto('http://localhost:8080/create');
@@ -119,12 +135,9 @@ test.describe('New Features - Session 3', () => {
       // User Name field (required)
       await expect(page.locator('label:has-text("Seu Nome")')).toBeVisible();
 
-      // Duration slider
-      await expect(page.locator('label:has-text("Duração")')).toBeVisible();
-
       // Music type (Instrumental/Vocal)
       await expect(page.locator('text=Instrumental')).toBeVisible();
-      await expect(page.locator('text=Com Vocal')).toBeVisible();
+      await expect(page.locator('text=Com Letra Gerada')).toBeVisible();
 
       // Song name
       await expect(page.locator('label:has-text("Nome da Música")')).toBeVisible();
@@ -142,30 +155,31 @@ test.describe('New Features - Session 3', () => {
       await expect(generateButton).toBeDisabled();
     });
 
-    test.skip('should allow selecting music type', async ({ page }) => {
-      // TODO: Update test when music type selection is implemented
+    test('should allow selecting music type', async ({ page }) => {
       // Login and navigate to create page
       await loginTestUser(page);
       await page.goto('http://localhost:8080/create');
 
-      // Click on "Com Vocal"
-      const vocalButton = page.locator('button:has-text("Com Vocal")');
+      // Click on "Com Letra Gerada"
+      const vocalButton = page.locator('button:has(p:has-text("Com Letra Gerada"))').first();
       await vocalButton.click();
 
-      // Lyrics checkbox should appear
-      await expect(page.locator('label:has-text("Gerar letra")')).toBeVisible();
+      // Should be selected (border-primary class)
+      await page.waitForTimeout(300);
+      const classes = await vocalButton.getAttribute('class');
+      expect(classes).toContain('border-primary');
     });
 
     test.skip('should adjust duration slider', async ({ page }) => {
-      // TODO: Update test when duration slider is implemented
-      // Login and navigate to create page
+      // SKIPPED: Duration slider feature will NOT be implemented
+      // Duration comes automatically from UDIO/GoAPI (30s default)
+      // This test is kept for documentation purposes
       await loginTestUser(page);
       await page.goto('http://localhost:8080/create');
 
       const durationSlider = page.locator('input[type="range"]').first();
       await expect(durationSlider).toBeVisible();
 
-      // Check min and max values
       const min = await durationSlider.getAttribute('min');
       const max = await durationSlider.getAttribute('max');
       expect(min).toBe('15');
@@ -276,9 +290,8 @@ test.describe('New Features - Session 3', () => {
       // Login first
       await loginTestUser(page);
 
-      // Should be on dashboard
-      const libraryLink = page.locator('button:has-text("Criações")');
-      await libraryLink.click();
+      // Navigate to library
+      await navigateToLibrary(page);
 
       await page.waitForURL('**/library');
       expect(page.url()).toContain('/library');
@@ -299,12 +312,20 @@ test.describe('New Features - Session 3', () => {
     test('should navigate from library back to dashboard', async ({ page }) => {
       // Login and go to library
       await loginTestUser(page);
-      await page.locator('button:has-text("Criações")').first().click();
+      await navigateToLibrary(page);
       await page.waitForURL('**/library');
 
       // Navigate back to dashboard
-      const homeLink = page.locator('button:has-text("Início")');
-      await homeLink.click();
+      await page.waitForTimeout(500);
+      const homeLink = page.locator('button:has-text("Início")').first();
+      if (await homeLink.isVisible()) {
+        await homeLink.click();
+      } else {
+        // Mobile menu
+        const menuButton = page.locator('button:has(svg.lucide-menu)');
+        await menuButton.click();
+        await page.locator('button:has-text("Início")').last().click();
+      }
 
       await page.waitForURL('**/dashboard');
       expect(page.url()).toContain('/dashboard');
@@ -349,25 +370,32 @@ test.describe('New Features - Session 3', () => {
       await page.setViewportSize({ width: 375, height: 667 }); // iPhone size
     });
 
-    test.skip('should display mobile FAB button on dashboard', async ({ page }) => {
-      // TODO: Implement mobile FAB button
+    test('should display mobile FAB button on dashboard', async ({ page }) => {
       // Login first
       await loginTestUser(page);
 
       // Should be on dashboard
-      // Mobile FAB (Floating Action Button) should be visible
-      const fab = page.locator('button').filter({ hasText: '+' }).last();
+      // Mobile FAB (Floating Action Button) - the fixed bottom-right button
+      const fab = page.locator('button.fixed.bottom-6.right-6');
       await expect(fab).toBeVisible();
     });
 
-    test.skip('should adapt layout on mobile for library', async ({ page }) => {
-      // TODO: Implement mobile navigation (currently hidden on small screens)
-      // Login and navigate to library
+    test('should adapt layout on mobile for library', async ({ page }) => {
+      // Login
       await loginTestUser(page);
-      await page.click('button:has-text("Criações")');
+
+      // Wait for any toast notifications to disappear
+      await page.waitForTimeout(3000);
+
+      // Open mobile menu (hamburguer icon) - use force to bypass any remaining toasts
+      const menuButton = page.locator('button:has(svg.lucide-menu)');
+      await menuButton.click({ force: true });
+
+      // Click "Criações" in mobile menu
+      await page.locator('button:has-text("Criações")').last().click();
       await page.waitForURL('**/library');
 
-      // Should still show search and filters
+      // Should show search and filters
       await expect(page.locator('input[placeholder*="Buscar"]')).toBeVisible();
     });
   });

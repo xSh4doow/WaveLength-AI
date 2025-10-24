@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Music2, Play, Search, Loader2, Heart } from "lucide-react";
+import { Music2, Play, Search, Loader2, Heart, Menu } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -11,6 +11,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 import { getSongs, getSongsByUser, getFriendsSongs, getAudioUrl, type Song } from "@/services/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { useQueue } from "@/contexts/QueueContext";
@@ -32,6 +39,9 @@ export const Library = () => {
   const [sortBy, setSortBy] = useState("recent");
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Mobile menu state
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   // Load songs from backend
   useEffect(() => {
@@ -135,8 +145,9 @@ export const Library = () => {
               </span>
             </div>
 
+            {/* Desktop Navigation */}
             <nav className="hidden md:flex items-center gap-6">
-              <button 
+              <button
                 onClick={() => navigate("/dashboard")}
                 className="text-muted-foreground hover:text-primary transition-colors"
               >
@@ -145,13 +156,55 @@ export const Library = () => {
               <button className="text-foreground hover:text-primary transition-colors">
                 Criações
               </button>
-              <button 
+              <button
                 onClick={handleLogout}
                 className="text-muted-foreground hover:text-primary transition-colors"
               >
                 Sair
               </button>
             </nav>
+
+            {/* Mobile Navigation */}
+            <Sheet open={isMobileMenuOpen} onOpenChange={setIsMobileMenuOpen}>
+              <SheetTrigger asChild className="md:hidden">
+                <Button variant="ghost" size="icon">
+                  <Menu className="w-6 h-6" />
+                </Button>
+              </SheetTrigger>
+              <SheetContent>
+                <SheetHeader>
+                  <SheetTitle>Menu</SheetTitle>
+                </SheetHeader>
+                <nav className="flex flex-col gap-4 mt-6">
+                  <button
+                    onClick={() => {
+                      navigate("/dashboard");
+                      setIsMobileMenuOpen(false);
+                    }}
+                    className="text-left text-lg font-semibold text-muted-foreground hover:text-primary transition-colors py-2"
+                  >
+                    Início
+                  </button>
+                  <button
+                    onClick={() => {
+                      setIsMobileMenuOpen(false);
+                    }}
+                    className="text-left text-lg font-semibold text-foreground hover:text-primary transition-colors py-2"
+                  >
+                    Criações
+                  </button>
+                  <button
+                    onClick={() => {
+                      handleLogout();
+                      setIsMobileMenuOpen(false);
+                    }}
+                    className="text-left text-lg font-semibold text-muted-foreground hover:text-primary transition-colors py-2"
+                  >
+                    Sair
+                  </button>
+                </nav>
+              </SheetContent>
+            </Sheet>
           </div>
         </div>
       </header>
