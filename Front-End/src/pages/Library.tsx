@@ -22,6 +22,7 @@ import { getSongs, getSongsByUser, getFriendsSongs, getAudioUrl, type Song } fro
 import { useAuth } from "@/contexts/AuthContext";
 import { useQueue } from "@/contexts/QueueContext";
 import { usePlayer } from "@/contexts/PlayerContext";
+import { SongTags } from "@/components/ui/song-tags";
 
 export const Library = () => {
   const navigate = useNavigate();
@@ -358,13 +359,9 @@ export const Library = () => {
                           {song.caption}
                         </p>
                       )}
-                      <div className="flex items-center justify-between text-sm">
-                        {song.genre && (
-                          <span className="px-2 py-1 rounded-full glass-effect text-xs">
-                            {song.genre}
-                          </span>
-                        )}
-                        <span className="text-muted-foreground">
+                      <div className="flex items-center justify-between text-sm gap-2">
+                        <SongTags song={song} maxTags={2} />
+                        <span className="text-muted-foreground whitespace-nowrap">
                           {formatDuration(song.duration)}
                         </span>
                       </div>

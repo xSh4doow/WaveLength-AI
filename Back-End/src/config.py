@@ -9,10 +9,11 @@ PORT = int(os.getenv("PORT", "8000"))
 # Image Captioning Model
 BLIP_MODEL = os.getenv("BLIP_MODEL", "Salesforce/blip-image-captioning-large")
 
-# Music Generation API (GoAPI.ai - Suno/Udio)
-USE_UDIO = os.getenv("USE_UDIO", "false").lower() == "true"
-GOAPI_API_KEY = os.getenv("GOAPI_API_KEY", "")
-GOAPI_API_URL = os.getenv("GOAPI_API_URL", "https://api.goapi.ai")
+# Music Generation API (SunoAPI)
+USE_SUNO = os.getenv("USE_SUNO", "true").lower() == "true"
+SUNO_API_KEY = os.getenv("SUNO_API_KEY", "c76638c2827ca387dde5107e4ac2ca73")
+SUNO_API_URL = os.getenv("SUNO_API_URL", "https://api.sunoapi.org")
+SUNO_MODEL = os.getenv("SUNO_MODEL", "V4")  # V3_5, V4, V4_5, V4_5PLUS, V5
 
 # Paths
 OUT_DIR = os.path.join(os.path.dirname(__file__), "out")

@@ -2,12 +2,15 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Music2, Plus, Play, MoreVertical, Download, Trash2, Loader2, PlayCircle, Heart, Search, UserPlus, UserMinus, Menu } from "lucide-react";
+import { Music2, Plus, Play, MoreVertical, Download, Trash2, Loader2, PlayCircle, Heart, Search, UserPlus, UserMinus, Menu, ListPlus, ListMusic } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
   Dialog,
@@ -23,16 +26,17 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import { getSongsByUser, getAudioUrl, deleteSong, searchUsers, followUser, unfollowUser, getFollowing, type Song, type User } from "@/services/api";
+import { getSongsByUser, getAudioUrl, deleteSong, searchUsers, followUser, unfollowUser, getFollowing, getUserPlaylists, addSongToPlaylist, type Song, type User, type Playlist } from "@/services/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { useQueue } from "@/contexts/QueueContext";
 import { usePlayer } from "@/contexts/PlayerContext";
 import { toast } from "@/hooks/use-toast";
+import { downloadSong } from "@/utils/downloadSong";
 
 export const Dashboard = () => {
   const navigate = useNavigate();
   const { userId, userName, logout } = useAuth();
-  const { setQueue } = useQueue();
+  const { setQueue, addToQueue } = useQueue();
   const { setPlayerState } = usePlayer();
 
   const [songs, setSongs] = useState<Song[]>([]);
@@ -48,6 +52,7 @@ export const Dashboard = () => {
   const [isSearching, setIsSearching] = useState(false);
   const [following, setFollowing] = useState<User[]>([]);
   const [followingIds, setFollowingIds] = useState<Set<number>>(new Set());
+  const [playlists, setPlaylists] = useState<Playlist[]>([]);
 
   // Load following list and songs
   useEffect(() => {
@@ -58,14 +63,16 @@ export const Dashboard = () => {
         setIsLoading(true);
         setError(null);
 
-        const [userSongs, followingList] = await Promise.all([
+        const [userSongs, followingList, userPlaylists] = await Promise.all([
           getSongsByUser(userName),
           getFollowing(userId),
+          getUserPlaylists(userId),
         ]);
 
         setSongs(userSongs);
         setFollowing(followingList);
         setFollowingIds(new Set(followingList.map(u => u.id)));
+        setPlaylists(userPlaylists);
       } catch (err) {
         console.error("Error loading data:", err);
         setError("Erro ao carregar dados");
@@ -184,6 +191,22 @@ export const Dashboard = () => {
     }
   };
 
+  const handleAddToPlaylist = async (playlistId: number, songId: string, songName: string, playlistName: string) => {
+    try {
+      await addSongToPlaylist(playlistId, songId);
+      toast({
+        title: "Adicionada à playlist",
+        description: `"${songName}" → ${playlistName}`,
+      });
+    } catch (err) {
+      toast({
+        title: "Erro",
+        description: "Não foi possível adicionar à playlist",
+        variant: "destructive",
+      });
+    }
+  };
+
   const formatDuration = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
@@ -215,6 +238,12 @@ export const Dashboard = () => {
                 className="text-muted-foreground hover:text-primary transition-colors"
               >
                 Criações
+              </button>
+              <button
+                onClick={() => navigate("/playlists")}
+                className="text-muted-foreground hover:text-primary transition-colors"
+              >
+                Playlists
               </button>
               <button
                 onClick={handleLogout}
@@ -252,6 +281,15 @@ export const Dashboard = () => {
                     className="text-left text-lg font-semibold text-muted-foreground hover:text-primary transition-colors py-2"
                   >
                     Criações
+                  </button>
+                  <button
+                    onClick={() => {
+                      navigate("/playlists");
+                      setIsMobileMenuOpen(false);
+                    }}
+                    className="text-left text-lg font-semibold text-muted-foreground hover:text-primary transition-colors py-2"
+                  >
+                    Playlists
                   </button>
                   <button
                     onClick={() => {
@@ -412,13 +450,59 @@ export const Dashboard = () => {
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               onClick={() => {
-                                const audioUrl = getAudioUrl(song.audio_path);
-                                const link = document.createElement("a");
-                                link.href = audioUrl;
-                                link.download = `${song.song_name}.wav`;
-                                document.body.appendChild(link);
-                                link.click();
-                                document.body.removeChild(link);
+                                addToQueue(song);
+                                toast({
+                                  title: "Adicionado à fila",
+                                  description: song.song_name,
+                                });
+                              }}
+                            >
+                              <ListPlus className="w-4 h-4 mr-2" />
+                              Adicionar à fila
+                            </DropdownMenuItem>
+
+                            {/* Adicionar à Playlist Submenu */}
+                            <DropdownMenuSub>
+                              <DropdownMenuSubTrigger>
+                                <ListMusic className="w-4 h-4 mr-2" />
+                                Adicionar à playlist
+                              </DropdownMenuSubTrigger>
+                              <DropdownMenuSubContent>
+                                {playlists.length === 0 ? (
+                                  <DropdownMenuItem disabled>
+                                    Nenhuma playlist
+                                  </DropdownMenuItem>
+                                ) : (
+                                  playlists.map((playlist) => (
+                                    <DropdownMenuItem
+                                      key={playlist.id}
+                                      onClick={() => handleAddToPlaylist(playlist.id, song.id, song.song_name, playlist.name)}
+                                    >
+                                      {playlist.name}
+                                    </DropdownMenuItem>
+                                  ))
+                                )}
+                                <DropdownMenuItem onClick={() => navigate("/playlists")}>
+                                  <Plus className="w-4 h-4 mr-2" />
+                                  Nova Playlist
+                                </DropdownMenuItem>
+                              </DropdownMenuSubContent>
+                            </DropdownMenuSub>
+
+                            <DropdownMenuItem
+                              onClick={async () => {
+                                try {
+                                  await downloadSong(song.audio_path, song.song_name);
+                                  toast({
+                                    title: "Download iniciado",
+                                    description: song.song_name,
+                                  });
+                                } catch (error) {
+                                  toast({
+                                    title: "Erro no download",
+                                    variant: "destructive",
+                                  });
+                                }
                               }}
                             >
                               <Download className="w-4 h-4 mr-2" />

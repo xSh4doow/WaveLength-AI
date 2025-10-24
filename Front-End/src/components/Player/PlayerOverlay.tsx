@@ -17,11 +17,16 @@ import {
   Share2,
   Download,
   ChevronDown,
+  Mic,
+  List,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { usePlayer } from "@/contexts/PlayerContext";
 import { useQueue } from "@/contexts/QueueContext";
 import { getAudioUrl, toggleLike } from "@/services/api";
+import { downloadSong } from "@/utils/downloadSong";
+import { QueuePanel } from "./QueuePanel";
+import { toast } from "@/hooks/use-toast";
 
 // Memoized PlayerControls component
 const PlayerControls = memo(({
@@ -169,6 +174,8 @@ export function PlayerOverlay() {
   } = useQueue();
 
   const [isLiked, setIsLiked] = useState(currentSong?.is_liked || false);
+  const [showQueuePanel, setShowQueuePanel] = useState(false);
+  const [showLyrics, setShowLyrics] = useState(false);
 
   // Sync isLiked with currentSong
   useEffect(() => {
@@ -191,15 +198,21 @@ export function PlayerOverlay() {
     [seek]
   );
 
-  const handleDownload = useCallback(() => {
+  const handleDownload = useCallback(async () => {
     if (!currentSong) return;
-    const audioUrl = getAudioUrl(currentSong.audio_path);
-    const link = document.createElement("a");
-    link.href = audioUrl;
-    link.download = `${currentSong.song_name}.wav`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    try {
+      await downloadSong(currentSong.audio_path, currentSong.song_name);
+      toast({
+        title: "Download iniciado",
+        description: currentSong.song_name,
+      });
+    } catch (error) {
+      toast({
+        title: "Erro no download",
+        description: "Não foi possível baixar a música",
+        variant: "destructive",
+      });
+    }
   }, [currentSong]);
 
   const handleShare = useCallback(async () => {
@@ -327,17 +340,36 @@ export function PlayerOverlay() {
               {/* Secondary Controls + Volume */}
               <div className="flex items-center justify-between px-4">
                 <div className="flex items-center gap-2">
+                  {currentSong?.has_lyrics && currentSong?.lyrics && (
+                    <Button
+                      variant={showLyrics ? "default" : "ghost"}
+                      size="icon"
+                      onClick={() => setShowLyrics(!showLyrics)}
+                      title="Mostrar/Ocultar Letra"
+                    >
+                      <Mic className="w-5 h-5" />
+                    </Button>
+                  )}
+                  <Button
+                    variant={showQueuePanel ? "default" : "ghost"}
+                    size="icon"
+                    onClick={() => setShowQueuePanel(true)}
+                    title="Fila de Reprodução"
+                  >
+                    <List className="w-5 h-5" />
+                  </Button>
                   <Button
                     variant={isLiked ? "default" : "ghost"}
                     size="icon"
                     onClick={handleToggleLike}
+                    title="Curtir"
                   >
                     <Heart className={`w-5 h-5 ${isLiked ? "fill-current" : ""}`} />
                   </Button>
-                  <Button variant="ghost" size="icon" onClick={handleShare}>
+                  <Button variant="ghost" size="icon" onClick={handleShare} title="Compartilhar">
                     <Share2 className="w-5 h-5" />
                   </Button>
-                  <Button variant="ghost" size="icon" onClick={handleDownload}>
+                  <Button variant="ghost" size="icon" onClick={handleDownload} title="Download">
                     <Download className="w-5 h-5" />
                   </Button>
                 </div>
@@ -364,9 +396,29 @@ export function PlayerOverlay() {
                 </div>
               </div>
             </div>
+
+            {/* Lyrics Panel (conditional) */}
+            {showLyrics && currentSong?.has_lyrics && currentSong?.lyrics && (
+              <div className="absolute right-4 top-24 bottom-24 w-96 glass-effect rounded-2xl p-6 overflow-hidden">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-xl font-bold">Letra</h3>
+                  <Button variant="ghost" size="icon" onClick={() => setShowLyrics(false)}>
+                    <ChevronDown className="w-5 h-5 rotate-90" />
+                  </Button>
+                </div>
+                <div className="h-full overflow-y-auto pr-2">
+                  <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed">
+                    {currentSong.lyrics}
+                  </pre>
+                </div>
+              </div>
+            )}
           </div>
         </main>
       </div>
+
+      {/* Queue Panel */}
+      <QueuePanel isOpen={showQueuePanel} onClose={() => setShowQueuePanel(false)} />
     </>
   );
 }

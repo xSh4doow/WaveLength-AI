@@ -159,6 +159,81 @@ def init_database():
                 )
             """)
 
+        # Playlists table
+        if USE_POSTGRES:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS playlists (
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER NOT NULL,
+                    name TEXT NOT NULL,
+                    description TEXT,
+                    is_public BOOLEAN DEFAULT TRUE,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+                )
+            """)
+        else:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS playlists (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    name TEXT NOT NULL,
+                    description TEXT,
+                    is_public BOOLEAN DEFAULT 1,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+                )
+            """)
+
+        # Playlist songs (many-to-many relationship)
+        if USE_POSTGRES:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS playlist_songs (
+                    id SERIAL PRIMARY KEY,
+                    playlist_id INTEGER NOT NULL,
+                    song_id TEXT NOT NULL,
+                    position INTEGER NOT NULL,
+                    added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (playlist_id) REFERENCES playlists(id) ON DELETE CASCADE,
+                    FOREIGN KEY (song_id) REFERENCES songs(id) ON DELETE CASCADE,
+                    UNIQUE(playlist_id, song_id)
+                )
+            """)
+        else:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS playlist_songs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    playlist_id INTEGER NOT NULL,
+                    song_id TEXT NOT NULL,
+                    position INTEGER NOT NULL,
+                    added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (playlist_id) REFERENCES playlists(id) ON DELETE CASCADE,
+                    FOREIGN KEY (song_id) REFERENCES songs(id) ON DELETE CASCADE,
+                    UNIQUE(playlist_id, song_id)
+                )
+            """)
+
+        # Add new columns for SunoAPI integration (if not exists)
+        if USE_POSTGRES:
+            # PostgreSQL syntax
+            cursor.execute("""
+                ALTER TABLE songs
+                ADD COLUMN IF NOT EXISTS suno_task_id TEXT,
+                ADD COLUMN IF NOT EXISTS generation_status TEXT DEFAULT 'SUCCESS'
+            """)
+        else:
+            # SQLite syntax - check if columns exist first
+            cursor.execute("PRAGMA table_info(songs)")
+            columns = [row[1] if isinstance(row, tuple) else row["name"] for row in cursor.fetchall()]
+
+            if "suno_task_id" not in columns:
+                cursor.execute("ALTER TABLE songs ADD COLUMN suno_task_id TEXT")
+
+            if "generation_status" not in columns:
+                cursor.execute("ALTER TABLE songs ADD COLUMN generation_status TEXT DEFAULT 'SUCCESS'")
+
         conn.commit()
         print(f"[Database] Tables initialized successfully ({'PostgreSQL' if USE_POSTGRES else 'SQLite'})")
 
@@ -171,14 +246,15 @@ def create_song(song_data: Dict[str, Any]) -> str:
         if USE_POSTGRES:
             cursor.execute("""
                 INSERT INTO songs (
-                    id, user_name, song_name, image_path, audio_path,
+                    id, user_id, user_name, song_name, image_path, audio_path,
                     caption, genre, tags, duration, has_vocals, has_lyrics,
-                    lyrics, is_liked, created_at
+                    lyrics, is_liked, suno_task_id, generation_status, created_at
                 ) VALUES (
-                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
                 )
             """, (
                 song_data["id"],
+                song_data.get("user_id"),
                 song_data["user_name"],
                 song_data["song_name"],
                 song_data.get("image_path"),
@@ -191,17 +267,20 @@ def create_song(song_data: Dict[str, Any]) -> str:
                 song_data.get("has_lyrics", False),
                 song_data.get("lyrics"),
                 song_data.get("is_liked", False),
+                song_data.get("suno_task_id"),
+                song_data.get("generation_status", "SUCCESS"),
                 song_data.get("created_at", datetime.now())
             ))
         else:
             cursor.execute("""
                 INSERT INTO songs (
-                    id, user_name, song_name, image_path, audio_path,
+                    id, user_id, user_name, song_name, image_path, audio_path,
                     caption, genre, tags, duration, has_vocals, has_lyrics,
-                    lyrics, is_liked, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    lyrics, is_liked, suno_task_id, generation_status, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 song_data["id"],
+                song_data.get("user_id"),
                 song_data["user_name"],
                 song_data["song_name"],
                 song_data.get("image_path"),
@@ -214,6 +293,8 @@ def create_song(song_data: Dict[str, Any]) -> str:
                 song_data.get("has_lyrics", False),
                 song_data.get("lyrics"),
                 song_data.get("is_liked", False),
+                song_data.get("suno_task_id"),
+                song_data.get("generation_status", "SUCCESS"),
                 song_data.get("created_at", datetime.now())
             ))
 
@@ -314,6 +395,88 @@ def delete_song(song_id: str) -> bool:
             cursor.execute("DELETE FROM songs WHERE id = ?", (song_id,))
 
         return cursor.rowcount > 0
+
+
+def update_song_status(
+    song_id: str,
+    status: str,
+    audio_url: Optional[str] = None,
+    image_url: Optional[str] = None,
+    duration: Optional[int] = None,
+    lyrics: Optional[str] = None
+) -> bool:
+    """
+    Update song generation status and audio data when SunoAPI completes.
+
+    Args:
+        song_id: Song ID
+        status: New status (PENDING, GENERATING, SUCCESS, FAILED)
+        audio_url: Audio URL from SunoAPI (if completed)
+        image_url: Image URL from SunoAPI (if completed)
+        duration: Actual duration from SunoAPI (if completed)
+        lyrics: Generated lyrics from SunoAPI (if available)
+
+    Returns:
+        True if update succeeded
+    """
+    with get_db() as conn:
+        cursor = conn.cursor()
+
+        # Build dynamic update query
+        fields = ["generation_status"]
+        values = [status]
+
+        if audio_url:
+            fields.append("audio_path")
+            values.append(audio_url)
+
+        if image_url:
+            fields.append("image_path")
+            values.append(image_url)
+
+        if duration is not None:
+            fields.append("duration")
+            values.append(duration)
+
+        if lyrics:
+            fields.append("lyrics")
+            values.append(lyrics)
+
+        # Add song_id to values
+        values.append(song_id)
+
+        if USE_POSTGRES:
+            set_clause = ", ".join([f"{field} = %s" for field in fields])
+            cursor.execute(f"UPDATE songs SET {set_clause} WHERE id = %s", tuple(values))
+        else:
+            set_clause = ", ".join([f"{field} = ?" for field in fields])
+            cursor.execute(f"UPDATE songs SET {set_clause} WHERE id = ?", tuple(values))
+
+        return cursor.rowcount > 0
+
+
+def get_song_by_task_id(task_id: str) -> Optional[Dict[str, Any]]:
+    """
+    Get song by SunoAPI task ID.
+
+    Args:
+        task_id: SunoAPI task ID
+
+    Returns:
+        Song data or None
+    """
+    with get_db() as conn:
+        cursor = conn.cursor()
+
+        if USE_POSTGRES:
+            cursor.execute("SELECT * FROM songs WHERE suno_task_id = %s", (task_id,))
+        else:
+            cursor.execute("SELECT * FROM songs WHERE suno_task_id = ?", (task_id,))
+
+        row = cursor.fetchone()
+        if row:
+            return dict(row)
+        return None
 
 
 def search_songs(query: str, limit: int = 50) -> List[Dict[str, Any]]:

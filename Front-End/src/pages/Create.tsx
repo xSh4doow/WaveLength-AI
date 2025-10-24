@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,6 +17,7 @@ import { generateMusic } from "@/services/api";
 import { useQueue } from "@/contexts/QueueContext";
 import { usePlayer } from "@/contexts/PlayerContext";
 import { useUser } from "@/contexts/UserContext";
+import { useTaskPolling } from "@/hooks/useTaskPolling";
 
 const genres = [
   "Pop",
@@ -45,6 +46,95 @@ export const Create = () => {
   const [generationProgress, setGenerationProgress] = useState(0);
   const [elapsedTime, setElapsedTime] = useState(0);
   const [vocalType, setVocalType] = useState<"instrumental" | "with_lyrics">("instrumental");
+  const [includeTitleInLyrics, setIncludeTitleInLyrics] = useState(true);
+  const [taskId, setTaskId] = useState<string | null>(null);
+  const [songId, setSongId] = useState<string | null>(null);
+
+  // Use task polling hook
+  const { status: pollStatus, song: pollSong, error: pollError, progress: pollProgress } = useTaskPolling({
+    taskId,
+    songId,
+    enabled: isGenerating && taskId !== null,
+    interval: 10000, // Poll every 10 seconds
+    onComplete: (song) => {
+      // Task completed!
+      setGenerationStatus("Música gerada!");
+      setGenerationProgress(100);
+      setIsGenerating(false);
+
+      // Clear localStorage
+      localStorage.removeItem('wavelength_generating');
+
+      // Add to queue and open player
+      setQueue([song], 0);
+      setPlayerState("maximized");
+
+      toast({
+        title: "Música gerada!",
+        description: `"${song.song_name}" está pronta!`,
+      });
+
+      // Navigate to dashboard
+      navigate("/dashboard");
+    },
+    onError: (error) => {
+      setIsGenerating(false);
+      setGenerationStatus("Erro na geração");
+      localStorage.removeItem('wavelength_generating');
+
+      toast({
+        title: "Erro na geração",
+        description: error,
+        variant: "destructive",
+      });
+    }
+  });
+
+  // Update progress from polling
+  useEffect(() => {
+    if (pollProgress > 0) {
+      setGenerationProgress(pollProgress);
+    }
+  }, [pollProgress]);
+
+  // Restore generation state from localStorage if page was refreshed
+  useEffect(() => {
+    const savedGeneration = localStorage.getItem('wavelength_generating');
+    if (savedGeneration) {
+      const data = JSON.parse(savedGeneration);
+      const startTime = data.startTime;
+      const elapsed = Math.floor((Date.now() - startTime) / 1000);
+
+      // If generation started less than 5 minutes ago, restore state
+      if (elapsed < 300) {
+        setIsGenerating(true);
+        setGenerationStatus("Gerando sua música...");
+        setElapsedTime(elapsed);
+        setGenerationProgress(Math.min(90, (elapsed / 180) * 90)); // Max 90% until complete
+
+        // Restore task_id and song_id if available
+        if (data.taskId) {
+          setTaskId(data.taskId);
+        }
+        if (data.songId) {
+          setSongId(data.songId);
+        }
+
+        // Continue timer
+        const timerInterval = setInterval(() => {
+          setElapsedTime((prev) => prev + 1);
+        }, 1000);
+
+        // Cleanup function to clear interval
+        return () => {
+          clearInterval(timerInterval);
+        };
+      } else {
+        // Generation too old, remove it
+        localStorage.removeItem('wavelength_generating');
+      }
+    }
+  }, []);
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -63,15 +153,6 @@ export const Create = () => {
 
   const handleGenerate = async () => {
     // Validations
-    if (!userName.trim()) {
-      toast({
-        title: "Erro",
-        description: "Por favor, informe seu nome",
-        variant: "destructive",
-      });
-      return;
-    }
-
     if (!imageFile) {
       toast({
         title: "Erro",
@@ -81,8 +162,15 @@ export const Create = () => {
       return;
     }
 
-    // Save userName to localStorage
-    localStorage.setItem("wavelength_user_name", userName);
+    if (!userName || !userName.trim()) {
+      toast({
+        title: "Erro",
+        description: "Você precisa estar logado para gerar música",
+        variant: "destructive",
+      });
+      navigate("/auth");
+      return;
+    }
 
     setIsGenerating(true);
     setGenerationStatus("Iniciando geração...");
@@ -94,19 +182,11 @@ export const Create = () => {
       setElapsedTime((prev) => prev + 1);
     }, 1000);
 
-    // Simulated progress (real progress will come from backend in future)
-    const progressInterval = setInterval(() => {
-      setGenerationProgress((prev) => {
-        if (prev >= 90) return prev;
-        return prev + Math.random() * 5;
-      });
-    }, 500);
-
     try {
       setGenerationStatus("Analisando sua foto...");
       setGenerationProgress(10);
 
-      // Call backend API
+      // Call backend API (returns task_id immediately)
       const result = await generateMusic(imageFile, {
         userName,
         songName: songName || undefined,
@@ -115,47 +195,58 @@ export const Create = () => {
         duration: 30,
         hasVocals: vocalType === "with_lyrics",
         hasLyrics: vocalType === "with_lyrics",
+        includeTitleInLyrics: includeTitleInLyrics,
       });
 
-      setGenerationProgress(100);
-      setGenerationStatus("Música gerada!");
-      clearInterval(timerInterval);
-      clearInterval(progressInterval);
+      if (result.status === "SUCCESS") {
+        // Mock mode - completed immediately
+        setGenerationProgress(100);
+        setGenerationStatus("Música gerada!");
+        clearInterval(timerInterval);
+        setIsGenerating(false);
 
-      toast({
-        title: "Música gerada!",
-        description: `${result.caption}`,
-      });
+        toast({
+          title: "Música gerada!",
+          description: "Música mock criada (SunoAPI não disponível)",
+        });
 
-      // Create Song object and add to queue
-      const newSong = {
-        id: result.id,
-        song_name: result.song_name || songName || "Música Gerada",
-        user_name: userName,
-        image_path: result.image_url,
-        audio_path: result.audio_url,
-        caption: result.caption,
-        genre: genre || result.metadata?.genre,
-        tags: tags,
-        duration: result.duration || 30,
-        has_vocals: result.has_vocals,
-        has_lyrics: result.has_lyrics,
-        lyrics: result.lyrics,
-        is_liked: false,
-        created_at: new Date().toISOString(),
-      };
+        // Navigate to dashboard
+        setTimeout(() => navigate("/dashboard"), 1000);
+      } else if (result.status === "PENDING" && result.task_id) {
+        // SunoAPI mode - start polling
+        setTaskId(result.task_id);
+        setSongId(result.song_id);
+        setGenerationStatus("Gerando música com IA...");
+        setGenerationProgress(20);
 
-      // Add to queue and start playing
-      setQueue([newSong], 0);
-      setPlayerState("maximized");
+        // Save generation state to localStorage (with task_id)
+        localStorage.setItem('wavelength_generating', JSON.stringify({
+          startTime: Date.now(),
+          songName,
+          genre,
+          tags,
+          taskId: result.task_id,
+          songId: result.song_id
+        }));
 
-      // Navigate to dashboard
-      navigate("/dashboard");
+        toast({
+          title: "Geração iniciada!",
+          description: "Sua música está sendo criada. Aguarde...",
+        });
+
+        // useTaskPolling hook will handle the rest
+      } else {
+        throw new Error("Resposta inesperada do servidor");
+      }
+
     } catch (error) {
       console.error("Error generating music:", error);
       clearInterval(timerInterval);
-      clearInterval(progressInterval);
       setIsGenerating(false);
+
+      // Clear localStorage generation state
+      localStorage.removeItem('wavelength_generating');
+
       toast({
         title: "Erro na geração",
         description: error instanceof Error ? error.message : "Não foi possível gerar a música",
@@ -206,7 +297,7 @@ export const Create = () => {
 
             {/* Additional info */}
             <p className="text-sm text-muted-foreground mt-4">
-              Isso pode levar de 30 a 60 segundos...
+              A geração pode demorar até 3 minutos...
             </p>
           </div>
         </div>
@@ -294,17 +385,6 @@ export const Create = () => {
               {/* Form Section */}
               <div className="space-y-6">
                 <div className="space-y-2">
-                  <Label htmlFor="userName">Seu Nome *</Label>
-                  <Input
-                    id="userName"
-                    placeholder="Digite seu nome..."
-                    value={userName}
-                    onChange={(e) => setUserName(e.target.value)}
-                    required
-                  />
-                </div>
-
-                <div className="space-y-2">
                   <Label htmlFor="songName">Nome da Música</Label>
                   <Input
                     id="songName"
@@ -386,6 +466,22 @@ export const Create = () => {
                     </button>
                   </div>
                 </div>
+
+                {/* Include Title in Lyrics Checkbox (only for vocals) */}
+                {vocalType === "with_lyrics" && (
+                  <div className="flex items-center space-x-2 p-4 border rounded-lg bg-background/50">
+                    <input
+                      type="checkbox"
+                      id="includeTitleInLyrics"
+                      checked={includeTitleInLyrics}
+                      onChange={(e) => setIncludeTitleInLyrics(e.target.checked)}
+                      className="w-4 h-4 text-primary bg-gray-100 border-gray-300 rounded focus:ring-primary focus:ring-2"
+                    />
+                    <Label htmlFor="includeTitleInLyrics" className="cursor-pointer">
+                      Incluir nome da música na letra?
+                    </Label>
+                  </div>
+                )}
 
                 <Button
                   variant="hero"

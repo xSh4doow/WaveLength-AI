@@ -242,17 +242,31 @@ class UdioHandler:
         print(f"[UdioHandler] Waiting for task {task_id} to complete...")
         result = self.wait_for_completion(task_id, timeout=timeout)
 
-        # Step 3: Download audio
-        # GoAPI.ai structure: result.data.output or result.data.audio_url
-        data = result.get("data", {})
-        audio_url = data.get("audio_url") or data.get("output", {}).get("audio_url")
+        # Step 3: Extract song data from response
+        # GoAPI.ai structure: result.output.songs[0] contains song_path, duration, lyrics, etc
+        output = result.get("output", {})
+        songs = output.get("songs", [])
 
-        if not audio_url:
+        if not songs or len(songs) == 0:
             print(f"[UdioHandler] Full result: {result}")
-            raise RuntimeError("Task completed but no audio_url found in response")
+            raise RuntimeError("Task completed but no songs found in response")
 
-        print(f"[UdioHandler] Downloading audio from: {audio_url}")
-        final_path = self.download_audio(audio_url, save_path)
+        # Use first song from the array
+        song_data = songs[0]
+        song_path = song_data.get("song_path")
+
+        if not song_path:
+            print(f"[UdioHandler] Full song data: {song_data}")
+            raise RuntimeError("Task completed but no song_path found in response")
+
+        print(f"[UdioHandler] Song generated successfully!")
+        print(f"[UdioHandler] Song path: {song_path}")
+        print(f"[UdioHandler] Duration: {song_data.get('duration', 'unknown')}s")
+        print(f"[UdioHandler] Title: {song_data.get('title', 'unknown')}")
+
+        # Download the audio file
+        print(f"[UdioHandler] Downloading audio from: {song_path}")
+        final_path = self.download_audio(song_path, save_path)
 
         return final_path, result
 

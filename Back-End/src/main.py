@@ -14,13 +14,16 @@ from src import config
 
 # Import handlers
 from src.models.blip_handler import BLIPHandler
-from src.models.udio_handler import UdioHandler
+from src.models.suno_handler import SunoHandler
 from src.services.cultural_mapper import CulturalMapper
 from src.services.prompt_builder import PromptBuilder
 from src.utils.audio_utils import save_audio
 
 # Import database
 from src import database
+
+# Import services
+from src.services import playlist_service
 
 # Import schemas
 from src.models.schemas import SongResponse, SongUpdate
@@ -48,22 +51,11 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# CORS
+# CORS - Allow all origins (development mode)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "https://wave-length-ai.vercel.app",  # Production Vercel URL
-        "https://wave-length-l708r2qg0-xsh4doows-projects.vercel.app",  # Vercel Preview URL
-        "https://wavelength-ai.onrender.com",  # Render Backend URL
-        "https://wavelength-frontend.loca.lt",  # localtunnel frontend
-        "http://localhost:8080",  # Development
-        "http://localhost:8081",  # Development
-        "http://localhost:8082",  # Development
-        "http://localhost:5173",  # Vite dev alternate port
-        "http://localhost:5174",  # Vite dev alternate port
-        "http://localhost:3000",  # React dev
-    ],
-    allow_credentials=True,
+    allow_origins=["*"],  # Allow all origins
+    allow_credentials=False,  # Cannot use credentials with wildcard origins
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -73,18 +65,18 @@ os.makedirs(config.OUT_DIR, exist_ok=True)
 
 # ---------- GLOBAL HANDLERS (Lazy Load) ----------
 blip_handler: Optional[BLIPHandler] = None
-udio_handler: Optional[UdioHandler] = None
+suno_handler: Optional[SunoHandler] = None
 cultural_mapper = CulturalMapper()
 prompt_builder = PromptBuilder()
 
 # AI availability flags
 BLIP_READY = False
-UDIO_READY = False
+SUNO_READY = False
 
 
 def init_ai_handlers():
     """Initialize AI handlers (lazy loading)."""
-    global blip_handler, udio_handler, BLIP_READY, UDIO_READY
+    global blip_handler, suno_handler, BLIP_READY, SUNO_READY
 
     try:
         # Initialize BLIP (always needed for image captioning)
@@ -97,20 +89,20 @@ def init_ai_handlers():
         BLIP_READY = False
 
     try:
-        # Initialize GoAPI.ai (Udio/Suno) if enabled and API key provided
-        if config.USE_UDIO and config.GOAPI_API_KEY:
-            if udio_handler is None:
-                udio_handler = UdioHandler(
-                    api_key=config.GOAPI_API_KEY,
-                    api_url=config.GOAPI_API_URL
+        # Initialize SunoAPI if enabled and API key provided
+        if config.USE_SUNO and config.SUNO_API_KEY:
+            if suno_handler is None:
+                suno_handler = SunoHandler(
+                    api_key=config.SUNO_API_KEY,
+                    api_url=config.SUNO_API_URL
                 )
-                UDIO_READY = True
-                print("[main] GoAPI.ai handler initialized successfully")
+                SUNO_READY = True
+                print("[main] SunoAPI handler initialized successfully")
         else:
-            print("[main] GoAPI.ai disabled or no API key provided")
+            print("[main] SunoAPI disabled or no API key provided")
     except Exception as e:
-        print(f"[main] Failed to initialize GoAPI.ai: {repr(e)}")
-        UDIO_READY = False
+        print(f"[main] Failed to initialize SunoAPI: {repr(e)}")
+        SUNO_READY = False
 
 
 def generate_mock_audio(duration: int = 15, sample_rate: int = 32000) -> tuple[np.ndarray, int]:
@@ -154,12 +146,12 @@ def health():
     return {
         "status": "ok",
         "blip_ready": BLIP_READY,
-        "udio_ready": UDIO_READY,
+        "suno_ready": SUNO_READY,
         "device": device,
-        "music_generation": "udio_api" if UDIO_READY else "mock",
+        "music_generation": "suno_api" if SUNO_READY else "mock",
         "models_loaded": {
             "blip": blip_handler is not None and blip_handler.is_loaded() if blip_handler else False,
-            "udio": udio_handler is not None if udio_handler else False
+            "suno": suno_handler is not None if suno_handler else False
         }
     }
 
@@ -275,10 +267,11 @@ async def generate(
     duration: int = Form(30),
     has_vocals: bool = Form(False),
     has_lyrics: bool = Form(False),
+    include_title_in_lyrics: bool = Form(True),
     engine: Optional[str] = Form(None)  # "blip" | "mock" | None
 ):
     """
-    Generate music from image.
+    Generate music from image (ASYNC - returns task_id immediately).
 
     Args:
         image: Image file
@@ -286,15 +279,15 @@ async def generate(
         song_name: Name of the song (optional)
         genre: Music genre (optional)
         tags: Tags separated by commas (optional)
-        duration: Duration in seconds (15-100)
+        duration: Duration in seconds (15-100) - note: SunoAPI V4 supports up to 240s
         has_vocals: Whether the music has vocals
-        has_lyrics: Whether to generate lyrics
+        has_lyrics: Whether to generate lyrics (only if has_vocals=True)
         engine: "mock" | "blip" | None (auto)
 
     Returns:
-        JSON with song data including audio_url
+        JSON with task_id and song_id for polling
     """
-    # Validate duration (Udio typically supports up to 60-120s, but we keep 15-100 range)
+    # Validate duration
     if not 15 <= duration <= 100:
         raise HTTPException(400, "Duration must be between 15 and 100 seconds")
 
@@ -316,185 +309,472 @@ async def generate(
     # Final decision: use mock if BLIP not ready or explicitly requested
     use_mock = (engine == "mock") or (not BLIP_READY)
 
-    # Initialize lyrics variable
-    lyrics = None
+    # Generate unique song ID
+    song_id = uuid.uuid4().hex
+    final_song_name = song_name if song_name and song_name.strip() else "Música Gerada"
+
+    # Look up user_id from user_name
+    user_id = None
+    try:
+        users = database.search_users(user_name.strip(), limit=1)
+        if users and len(users) > 0 and users[0]["name"] == user_name.strip():
+            user_id = users[0]["id"]
+    except Exception as e:
+        print(f"[generate] Could not find user_id for '{user_name}': {e}")
 
     try:
         if use_mock:
             # ---------- MOCK MODE ----------
+            print("[generate] Using MOCK mode")
             caption = "Mock description (activate AI for real generation)"
             prompt = "Mock music prompt"
-            music_style = {
-                "genre": "ambient",
-                "bpm": 90,
-                "mood": "neutral"
-            }
-            audio_data, sample_rate = generate_mock_audio(duration=duration)
-        else:
-            # ---------- AI MODE ----------
-            # 1. Convert to PIL Image
-            pil_image = Image.open(io.BytesIO(img_bytes)).convert("RGB")
+            music_style = {"genre": "ambient", "bpm": 90, "mood": "neutral"}
 
-            # 2. Generate enhanced caption with BLIP
+            # Generate and save mock audio immediately
+            audio_data, sample_rate = generate_mock_audio(duration=duration)
+            audio_filename = f"{song_id}.wav"
+            audio_path = os.path.join(config.OUT_DIR, audio_filename)
+            save_audio(audio_path, audio_data, sample_rate)
+
+            # Save image
+            image_filename = f"{song_id}.jpg"
+            image_path = os.path.join(config.OUT_DIR, image_filename)
+            with open(image_path, "wb") as f:
+                f.write(img_bytes)
+
+            # Save to database with SUCCESS status (mock completes immediately)
+            database.create_song({
+                "id": song_id,
+                "user_id": user_id,
+                "user_name": user_name.strip(),
+                "song_name": final_song_name,
+                "image_path": f"/audio/{image_filename}",
+                "audio_path": f"/audio/{audio_filename}",
+                "caption": caption,
+                "genre": genre or "ambient",
+                "tags": tags,
+                "duration": duration,
+                "has_vocals": has_vocals,
+                "has_lyrics": False,
+                "lyrics": None,
+                "suno_task_id": None,
+                "generation_status": "SUCCESS"
+            })
+
+            return JSONResponse({
+                "song_id": song_id,
+                "task_id": None,
+                "status": "SUCCESS",
+                "message": "Mock music generated successfully",
+                "engine": "mock"
+            })
+
+        else:
+            # ---------- AI MODE with SunoAPI ----------
+            # 1. Generate caption with BLIP
+            pil_image = Image.open(io.BytesIO(img_bytes)).convert("RGB")
             caption_data = blip_handler.generate_enhanced_caption(pil_image)
             caption = caption_data["caption"]
             enhanced_caption = caption_data["enhanced_caption"]
             print(f"[generate] Caption: {caption}")
-            print(f"[generate] Enhanced: {enhanced_caption}")
 
-            # 3. Map to musical style
+            # 2. Map to musical style
             music_style = cultural_mapper.map_caption_to_style(caption)
-            print(f"[generate] Style: {music_style['genre']} - {music_style['subgenre']}")
+            print(f"[generate] CulturalMapper suggested: {music_style['genre']}")
 
-            # 4. Build prompt (pass user genre and tags if provided)
-            prompt = prompt_builder.build(
-                caption=enhanced_caption,  # Use enhanced caption for better results
+            # PRIORITY: Use user genre if provided, otherwise use CulturalMapper
+            if genre and genre.strip():
+                print(f"[generate] User override: Using user genre '{genre}' instead of '{music_style['genre']}'")
+                music_style["genre"] = genre.strip()
+
+            # 3. Build parameters for SunoAPI Custom Mode
+            style, title, lyrics_prompt = prompt_builder.build_for_custom_mode(
+                caption=enhanced_caption,
                 music_style=music_style,
-                user_genre=genre if genre else None,
-                user_tags=tags if tags else None
+                user_genre=genre,
+                user_tags=tags,
+                song_name=song_name,
+                has_vocals=has_vocals,
+                include_title_in_lyrics=include_title_in_lyrics
             )
-            print(f"[generate] Prompt: {prompt}")
+            print(f"[generate] Custom Mode - Style: {style}, Title: {title}")
 
-            # 5. Generate audio with Udio API or fallback to mock
-            if UDIO_READY and udio_handler:
-                # Use Udio API for music generation
-                print(f"[generate] Using Udio API for music generation...")
+            # 4. Save image locally
+            image_filename = f"{song_id}.jpg"
+            image_path = os.path.join(config.OUT_DIR, image_filename)
+            with open(image_path, "wb") as f:
+                f.write(img_bytes)
 
-                # Determine lyrics type based on parameters
-                if has_vocals and has_lyrics:
-                    lyrics_type = "generate"  # Let Udio generate lyrics
-                elif has_vocals:
-                    lyrics_type = "generate"  # Vocals with auto-generated lyrics
-                else:
-                    lyrics_type = "instrumental"  # No vocals
+            # 5. Create task in SunoAPI (ASYNC - don't wait)
+            if SUNO_READY and suno_handler:
+                print("[generate] Creating SunoAPI task...")
 
-                # Create temporary path for Udio download
-                file_id = uuid.uuid4().hex
-                audio_filename = f"{file_id}.wav"
-                audio_path = os.path.join(config.OUT_DIR, audio_filename)
+                # Determine instrumental flag (opposite of has_vocals)
+                instrumental = not has_vocals
 
-                # Generate and download from Udio
-                try:
-                    # Determine song title
-                    final_song_name = song_name if song_name and song_name.strip() else "Generated Song"
+                print(f"[generate] Generating with: instrumental={instrumental}, has_vocals={has_vocals}, has_lyrics={has_lyrics}")
 
-                    # Generate and download
-                    _, api_result = udio_handler.generate_and_download(
-                        prompt=prompt,
-                        save_path=audio_path,
-                        title=final_song_name,
-                        lyrics_type=lyrics_type,
-                        timeout=300  # 5 minutes timeout
-                    )
-                    print(f"[generate] GoAPI.ai generation successful!")
+                # --- TWO-STEP FLOW for vocals with lyrics ---
+                generated_lyrics = None
+                lyrics_mood_adjustment = ""
 
-                    # Extract lyrics from API response if available
-                    # GoAPI.ai structure: result.data.output.lyrics or result.data.lyrics
-                    data = api_result.get("data", {})
-                    api_lyrics = data.get("lyrics") or data.get("output", {}).get("lyrics")
+                if has_vocals and has_lyrics and lyrics_prompt:
+                    # Step 1: Generate lyrics first (with 3 retries)
+                    print(f"[generate] Step 1: Generating lyrics with prompt: {lyrics_prompt[:100]}...")
 
-                    if api_lyrics and (has_lyrics and has_vocals):
-                        lyrics = api_lyrics  # Use API-generated lyrics
-                        print(f"[generate] Lyrics received from API ({len(api_lyrics)} chars)")
+                    max_retries = 3
+                    retry_count = 0
+                    lyrics_success = False
 
-                    # Audio already saved, set flag to skip save_audio later
-                    audio_saved = True
-                except Exception as udio_error:
-                    print(f"[generate] GoAPI.ai failed: {udio_error}, falling back to mock")
-                    audio_data, sample_rate = generate_mock_audio(duration=duration)
-                    audio_saved = False
-                    use_mock = True
+                    while retry_count < max_retries and not lyrics_success:
+                        try:
+                            if retry_count > 0:
+                                print(f"[generate] Retry {retry_count}/{max_retries} for lyrics generation...")
+
+                            lyrics_response = suno_handler.generate_lyrics(
+                                prompt=lyrics_prompt
+                            )
+                            lyrics_task_id = lyrics_response.get("data", {}).get("taskId")
+
+                            if lyrics_task_id:
+                                # Wait for lyrics to complete (with timeout)
+                                print(f"[generate] Waiting for lyrics task: {lyrics_task_id}")
+                                lyrics_result = suno_handler.wait_for_completion(
+                                    task_id=lyrics_task_id,
+                                    timeout=120,  # 2 minutes max for lyrics
+                                    poll_interval=5,
+                                    task_type="lyrics"  # SPECIFY LYRICS TYPE
+                                )
+
+                                # Extract lyrics text
+                                lyrics_data = lyrics_result.get("data", {}).get("response", {}).get("data", [])
+                                if lyrics_data and len(lyrics_data) > 0:
+                                    generated_lyrics = lyrics_data[0].get("text", "")
+                                    print(f"[generate] Lyrics generated successfully: {generated_lyrics[:100]}...")
+
+                                    # Analyze lyrics sentiment and adjust style
+                                    lyrics_lower = generated_lyrics.lower()
+
+                                    # Detect emotional intensity keywords
+                                    if any(word in lyrics_lower for word in ["battle", "fight", "war", "blood", "rage", "fury", "destroy"]):
+                                        lyrics_mood_adjustment = "intense and aggressive"
+                                        print("[generate] Lyrics analysis: INTENSE/AGGRESSIVE mood detected")
+                                    elif any(word in lyrics_lower for word in ["dark", "shadow", "fear", "death", "pain", "sorrow", "cry"]):
+                                        lyrics_mood_adjustment = "dark and melancholic"
+                                        print("[generate] Lyrics analysis: DARK/MELANCHOLIC mood detected")
+                                    elif any(word in lyrics_lower for word in ["love", "heart", "dream", "hope", "light", "joy", "happy"]):
+                                        lyrics_mood_adjustment = "uplifting and hopeful"
+                                        print("[generate] Lyrics analysis: UPLIFTING/HOPEFUL mood detected")
+                                    elif any(word in lyrics_lower for word in ["king", "legend", "hero", "power", "glory", "rise"]):
+                                        lyrics_mood_adjustment = "epic and triumphant"
+                                        print("[generate] Lyrics analysis: EPIC/TRIUMPHANT mood detected")
+
+                                    # Add mood to style if detected
+                                    if lyrics_mood_adjustment and style:
+                                        style = f"{style}, {lyrics_mood_adjustment}"
+                                        print(f"[generate] Adjusted style with lyrics mood: {style}")
+
+                                    lyrics_success = True
+                                else:
+                                    print(f"[generate] Attempt {retry_count + 1}: No lyrics data in response")
+                                    retry_count += 1
+                            else:
+                                print(f"[generate] Attempt {retry_count + 1}: No task ID received")
+                                retry_count += 1
+
+                        except Exception as e:
+                            retry_count += 1
+                            print(f"[generate] Attempt {retry_count}/{max_retries} failed: {e}")
+                            if retry_count >= max_retries:
+                                print("[generate] All lyrics attempts failed, continuing with instrumental")
+                                instrumental = True  # Fallback to instrumental
+                                break
+
+                # Step 2: Generate music with Custom Mode
+                print(f"[generate] Step 2: Generating music...")
+                suno_response = suno_handler.generate_music(
+                    prompt=generated_lyrics if generated_lyrics else "",  # Use generated lyrics or empty
+                    style=style,
+                    title=title,
+                    custom_mode=True,
+                    instrumental=instrumental,
+                    model=config.SUNO_MODEL
+                )
+
+                # Extract task_id from response
+                task_id = suno_response.get("data", {}).get("taskId")
+                if not task_id:
+                    raise RuntimeError("Failed to get taskId from SunoAPI")
+
+                print(f"[generate] SunoAPI task created: {task_id}")
+
+                # Save song to database with PENDING status
+                # Capitalize tags properly
+                capitalized_tags = None
+                if tags:
+                    tags_list = [tag.strip().title() for tag in tags.split(",")]
+                    capitalized_tags = ", ".join(tags_list)
+
+                database.create_song({
+                    "id": song_id,
+                    "user_id": user_id,
+                    "user_name": user_name.strip(),
+                    "song_name": final_song_name,
+                    "image_path": f"/audio/{image_filename}",
+                    "audio_path": "",  # Will be updated when task completes
+                    "caption": caption,
+                    "genre": style,  # Use capitalized style from Custom Mode
+                    "tags": capitalized_tags,  # Capitalized tags
+                    "duration": duration,  # Requested duration, may change when complete
+                    "has_vocals": has_vocals,
+                    "has_lyrics": has_lyrics and has_vocals and generated_lyrics is not None,
+                    "lyrics": generated_lyrics,  # Store generated lyrics
+                    "suno_task_id": task_id,
+                    "generation_status": "PENDING"
+                })
+
+                # Return task_id for polling
+                return JSONResponse({
+                    "song_id": song_id,
+                    "task_id": task_id,
+                    "status": "PENDING",
+                    "message": "Music generation started. Use task_id to check status.",
+                    "engine": "suno"
+                })
             else:
-                # Fallback to mock audio
-                print(f"[generate] Udio not available, using mock audio")
-                audio_data, sample_rate = generate_mock_audio(duration=duration)
-                audio_saved = False
-                use_mock = True
+                # SunoAPI not available, fallback to mock
+                print("[generate] SunoAPI not available, using mock")
+                raise RuntimeError("SunoAPI not available")
 
     except Exception as e:
-        # Fallback to mock on any error
-        print(f"[generate] Error during generation, falling back to mock: {repr(e)}")
-        caption = "Error occurred (fallback to mock)"
-        prompt = "Mock music prompt (fallback)"
-        music_style = {
-            "genre": "ambient",
-            "bpm": 90,
-            "mood": "neutral"
-        }
+        # Error: Fallback to mock
+        print(f"[generate] Error: {repr(e)}, falling back to mock")
+
+        # Generate and save mock audio
         audio_data, sample_rate = generate_mock_audio(duration=duration)
-        audio_saved = False
-        use_mock = True
-
-    # 6. Save files
-    # Check if we need to generate file_id (might already exist from Udio flow)
-    if 'file_id' not in locals():
-        file_id = uuid.uuid4().hex
-        audio_filename = f"{file_id}.wav"
+        audio_filename = f"{song_id}.wav"
         audio_path = os.path.join(config.OUT_DIR, audio_filename)
-
-    # Save audio (only if not already saved by Udio)
-    if 'audio_saved' not in locals() or not audio_saved:
         save_audio(audio_path, audio_data, sample_rate)
 
-    # Save image
-    image_filename = f"{file_id}.jpg"
-    image_path = os.path.join(config.OUT_DIR, image_filename)
-    with open(image_path, "wb") as f:
-        f.write(img_bytes)
+        # Save image if not saved yet
+        image_filename = f"{song_id}.jpg"
+        image_path = os.path.join(config.OUT_DIR, image_filename)
+        if not os.path.exists(image_path):
+            with open(image_path, "wb") as f:
+                f.write(img_bytes)
 
-    # 7. Generate lyrics if requested
-    lyrics = None
-    if has_lyrics and has_vocals:
-        # TODO: Integrate with LLM for lyrics generation
-        # For now, use placeholder
-        lyrics = f"♪ Letra baseada em: {caption} ♪\n\n(Em breve: letras geradas por IA)"
+        # Save to database
+        database.create_song({
+            "id": song_id,
+            "user_id": user_id,
+            "user_name": user_name.strip(),
+            "song_name": final_song_name,
+            "image_path": f"/audio/{image_filename}",
+            "audio_path": f"/audio/{audio_filename}",
+            "caption": "Error occurred (fallback to mock)",
+            "genre": genre or "ambient",
+            "tags": tags,
+            "duration": duration,
+            "has_vocals": has_vocals,
+            "has_lyrics": False,
+            "lyrics": None,
+            "suno_task_id": None,
+            "generation_status": "SUCCESS"
+        })
 
-    # 8. Save to database
-    final_song_name = song_name if song_name and song_name.strip() else "Música Gerada"
-    song_data = {
-        "id": file_id,
-        "user_name": user_name.strip(),
-        "song_name": final_song_name,
-        "image_path": f"/audio/{image_filename}",
-        "audio_path": f"/audio/{audio_filename}",
-        "caption": caption,
-        "genre": genre or music_style.get("genre", "unknown"),
-        "tags": tags,
-        "duration": duration,
-        "has_vocals": has_vocals,
-        "has_lyrics": has_lyrics and has_vocals,
-        "lyrics": lyrics,
-    }
+        return JSONResponse({
+            "song_id": song_id,
+            "task_id": None,
+            "status": "SUCCESS",
+            "message": "Fallback to mock music (error occurred)",
+            "engine": "mock",
+            "error": str(e)
+        })
 
-    database.create_song(song_data)
 
-    # 9. Return response
-    # Determine engine used
-    if use_mock:
-        engine_used = "mock"
-    elif UDIO_READY and udio_handler:
-        engine_used = "udio"
-    else:
-        engine_used = "blip"
+@app.post("/webhook/suno")
+async def suno_webhook(request_data: dict = Body(...)):
+    """
+    Webhook endpoint to receive SunoAPI callbacks.
 
-    return JSONResponse({
-        "id": file_id,
-        "song_name": final_song_name,
-        "caption": caption,
-        "prompt": prompt,
-        "duration": duration,
-        "audio_url": f"/audio/{audio_filename}",
-        "image_url": f"/audio/{image_filename}",
-        "engine": engine_used,
-        "has_vocals": has_vocals,
-        "has_lyrics": has_lyrics and has_vocals,
-        "lyrics": lyrics,
-        "metadata": {
-            "genre": music_style.get("genre", "unknown"),
-            "bpm": music_style.get("bpm", 0),
-            "mood": music_style.get("mood", "neutral")
-        }
-    })
+    This endpoint receives notifications when music generation completes,
+    allowing us to update the database immediately instead of waiting for polling.
+
+    Args:
+        request_data: Callback data from SunoAPI
+
+    Returns:
+        Success confirmation
+    """
+    try:
+        print(f"[webhook/suno] Received callback: {request_data}")
+
+        # Extract callback data
+        code = request_data.get("code")
+        msg = request_data.get("msg")
+        data = request_data.get("data", {})
+        callback_type = data.get("callbackType")
+        task_id = data.get("task_id") or data.get("taskId")
+
+        if not task_id:
+            print(f"[webhook/suno] No task_id in callback")
+            return JSONResponse({"status": "error", "message": "No task_id"}, status_code=400)
+
+        # Find song by task_id
+        song = database.get_song_by_task_id(task_id)
+        if not song:
+            print(f"[webhook/suno] Song not found for task_id: {task_id}")
+            return JSONResponse({"status": "error", "message": "Song not found"}, status_code=404)
+
+        song_id = song["id"]
+
+        # Handle different callback types
+        if code == 200 and callback_type == "complete":
+            # Success - extract music data
+            music_data = data.get("data", [])
+
+            if music_data and len(music_data) > 0:
+                track = music_data[0]
+
+                audio_url = track.get("audio_url")
+                actual_duration = track.get("duration", song["duration"])
+                lyrics = track.get("prompt") if song["has_lyrics"] else None
+
+                # Update database
+                database.update_song_status(
+                    song_id=song_id,
+                    status="SUCCESS",
+                    audio_url=audio_url,
+                    image_url=None,  # Keep original uploaded image
+                    duration=int(actual_duration) if actual_duration else song["duration"],
+                    lyrics=lyrics
+                )
+
+                print(f"[webhook/suno] Successfully updated song {song_id}")
+                return JSONResponse({"status": "success", "message": "Song updated"})
+            else:
+                # No music data
+                database.update_song_status(song_id, status="FAILED")
+                print(f"[webhook/suno] No music data in callback")
+                return JSONResponse({"status": "error", "message": "No music data"}, status_code=500)
+
+        elif callback_type == "error" or code != 200:
+            # Failed
+            error_msg = msg or "Unknown error"
+            database.update_song_status(song_id, status="FAILED")
+            print(f"[webhook/suno] Task failed: {error_msg}")
+            return JSONResponse({"status": "error", "message": error_msg}, status_code=500)
+        else:
+            # Still generating (text, first, etc.)
+            print(f"[webhook/suno] Task still generating: {callback_type}")
+            return JSONResponse({"status": "pending", "message": f"Status: {callback_type}"})
+
+    except Exception as e:
+        print(f"[webhook/suno] Error processing callback: {repr(e)}")
+        return JSONResponse({"status": "error", "message": str(e)}, status_code=500)
+
+
+@app.get("/generate/status/{task_id}")
+def check_generation_status(task_id: str):
+    """
+    Check status of a SunoAPI music generation task.
+
+    Args:
+        task_id: SunoAPI task ID
+
+    Returns:
+        JSON with task status and song data when complete
+    """
+    try:
+        # Find song by task_id
+        song = database.get_song_by_task_id(task_id)
+        if not song:
+            raise HTTPException(404, "Song not found for this task_id")
+
+        song_id = song["id"]
+
+        # Check if already completed
+        if song["generation_status"] == "SUCCESS":
+            return JSONResponse({
+                "status": "SUCCESS",
+                "song_id": song_id,
+                "song": song
+            })
+
+        # Check SunoAPI status
+        if not SUNO_READY or not suno_handler:
+            raise HTTPException(503, "SunoAPI not available")
+
+        # Query SunoAPI for task status
+        suno_status = suno_handler.check_status(task_id)
+        suno_data = suno_status.get("data", {})
+        status = suno_data.get("status", "UNKNOWN")
+
+        print(f"[check_status] Task {task_id}: {status}")
+
+        # Update database based on status
+        if status == "SUCCESS":
+            # Extract song data from response
+            response = suno_data.get("response", {})
+            suno_songs = response.get("sunoData", [])
+
+            if suno_songs and len(suno_songs) > 0:
+                suno_song = suno_songs[0]
+
+                # Extract data
+                audio_url = suno_song.get("audioUrl")
+                # Don't use SunoAPI image - keep the uploaded image
+                actual_duration = suno_song.get("duration", song["duration"])
+                lyrics = suno_song.get("prompt") if song["has_lyrics"] else None
+
+                # Update song in database (without image_url to keep original)
+                database.update_song_status(
+                    song_id=song_id,
+                    status="SUCCESS",
+                    audio_url=audio_url,
+                    image_url=None,  # Keep original uploaded image
+                    duration=int(actual_duration) if actual_duration else song["duration"],
+                    lyrics=lyrics
+                )
+
+                # Fetch updated song
+                updated_song = database.get_song(song_id)
+
+                return JSONResponse({
+                    "status": "SUCCESS",
+                    "song_id": song_id,
+                    "song": updated_song
+                })
+            else:
+                # No songs in response, mark as failed
+                database.update_song_status(song_id, status="FAILED")
+                raise HTTPException(500, "No songs in SunoAPI response")
+
+        elif status in ["CREATE_TASK_FAILED", "GENERATE_AUDIO_FAILED",
+                       "CALLBACK_EXCEPTION", "SENSITIVE_WORD_ERROR"]:
+            # Task failed
+            error_message = suno_data.get("errorMessage", "Unknown error")
+            database.update_song_status(song_id, status="FAILED")
+
+            return JSONResponse({
+                "status": "FAILED",
+                "song_id": song_id,
+                "error": error_message
+            })
+
+        else:
+            # Still generating (PENDING, TEXT_SUCCESS, FIRST_SUCCESS, etc.)
+            return JSONResponse({
+                "status": "GENERATING",
+                "song_id": song_id,
+                "message": f"Task status: {status}"
+            })
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[check_status] Error: {repr(e)}")
+        raise HTTPException(500, f"Error checking status: {str(e)}")
 
 
 @app.get("/audio/{filename}")
@@ -664,6 +944,229 @@ def search_songs(q: str = Query(..., min_length=1), limit: int = Query(default=5
     """
     songs = database.search_songs(query=q, limit=limit)
     return songs
+
+
+# ---------- PLAYLISTS ENDPOINTS ----------
+
+class CreatePlaylistRequest(BaseModel):
+    user_id: int
+    name: str
+    description: Optional[str] = None
+    is_public: bool = True
+
+
+class UpdatePlaylistRequest(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    is_public: Optional[bool] = None
+
+
+class AddSongToPlaylistRequest(BaseModel):
+    song_id: str
+
+
+@app.post("/playlists")
+def create_playlist_endpoint(req: CreatePlaylistRequest):
+    """
+    Create a new playlist.
+
+    Args:
+        req: Playlist creation data
+
+    Returns:
+        Playlist ID
+    """
+    try:
+        playlist_id = playlist_service.create_playlist(
+            user_id=req.user_id,
+            name=req.name,
+            description=req.description,
+            is_public=req.is_public
+        )
+        return {"playlist_id": playlist_id, "success": True}
+    except Exception as e:
+        print(f"[create_playlist] Error: {e}")
+        raise HTTPException(500, "Failed to create playlist")
+
+
+@app.get("/playlists/user/{user_id}")
+def get_user_playlists_endpoint(user_id: int):
+    """
+    Get all playlists for a user.
+
+    Args:
+        user_id: User ID
+
+    Returns:
+        List of playlists with song count
+    """
+    try:
+        playlists = playlist_service.get_user_playlists(user_id)
+        return playlists
+    except Exception as e:
+        print(f"[get_user_playlists] Error: {e}")
+        raise HTTPException(500, "Failed to get playlists")
+
+
+@app.get("/playlists/public")
+def get_public_playlists_endpoint(limit: int = Query(default=50, le=200)):
+    """
+    Get all public playlists.
+
+    Args:
+        limit: Maximum number of playlists
+
+    Returns:
+        List of public playlists
+    """
+    try:
+        playlists = playlist_service.get_public_playlists(limit)
+        return playlists
+    except Exception as e:
+        print(f"[get_public_playlists] Error: {e}")
+        raise HTTPException(500, "Failed to get public playlists")
+
+
+@app.get("/playlists/{playlist_id}")
+def get_playlist_endpoint(playlist_id: int):
+    """
+    Get a specific playlist.
+
+    Args:
+        playlist_id: Playlist ID
+
+    Returns:
+        Playlist data
+    """
+    try:
+        playlist = playlist_service.get_playlist_by_id(playlist_id)
+        if not playlist:
+            raise HTTPException(404, "Playlist not found")
+        return playlist
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[get_playlist] Error: {e}")
+        raise HTTPException(500, "Failed to get playlist")
+
+
+@app.get("/playlists/{playlist_id}/songs")
+def get_playlist_songs_endpoint(playlist_id: int):
+    """
+    Get all songs in a playlist.
+
+    Args:
+        playlist_id: Playlist ID
+
+    Returns:
+        List of songs in playlist order
+    """
+    try:
+        songs = playlist_service.get_playlist_songs(playlist_id)
+        return songs
+    except Exception as e:
+        print(f"[get_playlist_songs] Error: {e}")
+        raise HTTPException(500, "Failed to get playlist songs")
+
+
+@app.post("/playlists/{playlist_id}/songs")
+def add_song_to_playlist_endpoint(playlist_id: int, req: AddSongToPlaylistRequest):
+    """
+    Add a song to a playlist.
+
+    Args:
+        playlist_id: Playlist ID
+        req: Song ID to add
+
+    Returns:
+        Success status
+    """
+    try:
+        success = playlist_service.add_song_to_playlist(playlist_id, req.song_id)
+        if not success:
+            raise HTTPException(400, "Failed to add song to playlist")
+        return {"success": True, "message": "Song added to playlist"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[add_song_to_playlist] Error: {e}")
+        raise HTTPException(500, "Failed to add song to playlist")
+
+
+@app.delete("/playlists/{playlist_id}/songs/{song_id}")
+def remove_song_from_playlist_endpoint(playlist_id: int, song_id: str):
+    """
+    Remove a song from a playlist.
+
+    Args:
+        playlist_id: Playlist ID
+        song_id: Song ID to remove
+
+    Returns:
+        Success status
+    """
+    try:
+        success = playlist_service.remove_song_from_playlist(playlist_id, song_id)
+        if not success:
+            raise HTTPException(400, "Failed to remove song from playlist")
+        return {"success": True, "message": "Song removed from playlist"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[remove_song_from_playlist] Error: {e}")
+        raise HTTPException(500, "Failed to remove song from playlist")
+
+
+@app.put("/playlists/{playlist_id}")
+def update_playlist_endpoint(playlist_id: int, req: UpdatePlaylistRequest):
+    """
+    Update playlist details.
+
+    Args:
+        playlist_id: Playlist ID
+        req: Updated playlist data
+
+    Returns:
+        Success status
+    """
+    try:
+        success = playlist_service.update_playlist(
+            playlist_id=playlist_id,
+            name=req.name,
+            description=req.description,
+            is_public=req.is_public
+        )
+        if not success:
+            raise HTTPException(400, "No fields to update or playlist not found")
+        return {"success": True, "message": "Playlist updated"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[update_playlist] Error: {e}")
+        raise HTTPException(500, "Failed to update playlist")
+
+
+@app.delete("/playlists/{playlist_id}")
+def delete_playlist_endpoint(playlist_id: int):
+    """
+    Delete a playlist.
+
+    Args:
+        playlist_id: Playlist ID
+
+    Returns:
+        Success status
+    """
+    try:
+        success = playlist_service.delete_playlist(playlist_id)
+        if not success:
+            raise HTTPException(404, "Playlist not found")
+        return {"success": True, "message": "Playlist deleted"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[delete_playlist] Error: {e}")
+        raise HTTPException(500, "Failed to delete playlist")
 
 
 # ---------- RUN ----------

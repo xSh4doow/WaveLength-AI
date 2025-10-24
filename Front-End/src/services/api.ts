@@ -4,23 +4,16 @@
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
+// Export API_URL for use in hooks
+export const API_URL = API_BASE_URL;
+
 export interface GenerateMusicResponse {
-  id: string;
-  song_name: string;
-  caption: string;
-  prompt: string;
-  duration: number;
-  audio_url: string;
-  image_url: string;
-  engine: 'blip' | 'mock';
-  has_vocals: boolean;
-  has_lyrics: boolean;
-  lyrics: string | null;
-  metadata: {
-    genre: string;
-    bpm: number;
-    mood: string;
-  };
+  song_id: string;
+  task_id: string | null;
+  status: "PENDING" | "SUCCESS";
+  message: string;
+  engine: 'suno' | 'mock';
+  error?: string;
 }
 
 export interface HealthResponse {
@@ -63,6 +56,7 @@ export async function generateMusic(
     duration?: number;
     hasVocals?: boolean;
     hasLyrics?: boolean;
+    includeTitleInLyrics?: boolean;
     engine?: string;
   }
 ): Promise<GenerateMusicResponse> {
@@ -75,6 +69,7 @@ export async function generateMusic(
   formData.append('duration', (options.duration || 15).toString());
   formData.append('has_vocals', (options.hasVocals || false).toString());
   formData.append('has_lyrics', (options.hasLyrics || false).toString());
+  formData.append('include_title_in_lyrics', (options.includeTitleInLyrics !== undefined ? options.includeTitleInLyrics : true).toString());
   if (options.engine) formData.append('engine', options.engine);
 
   const response = await fetch(`${API_BASE_URL}/generate`, {
@@ -189,6 +184,11 @@ export async function searchSongs(query: string, limit: number = 50): Promise<So
  * Get full audio URL
  */
 export function getAudioUrl(audioPath: string): string {
+  // If it's already an absolute URL (from SunoAPI), return as-is
+  if (audioPath.startsWith('http://') || audioPath.startsWith('https://')) {
+    return audioPath;
+  }
+
   // If audioPath starts with /, remove it to avoid double slash
   const cleanPath = audioPath.startsWith('/') ? audioPath.substring(1) : audioPath;
   return `${API_BASE_URL}/${cleanPath}`;
@@ -346,6 +346,194 @@ export async function getFollowers(userId: number): Promise<User[]> {
  */
 export async function getFriendsSongs(userId: number, limit: number = 100, offset: number = 0): Promise<Song[]> {
   const response = await fetch(`${API_BASE_URL}/songs/friends/${userId}?limit=${limit}&offset=${offset}`);
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+  }
+
+  return await response.json();
+}
+
+/**
+ * Playlist types
+ */
+export interface Playlist {
+  id: number;
+  user_id: number;
+  name: string;
+  description?: string | null;
+  is_public: boolean;
+  created_at: string;
+  updated_at: string;
+  song_count?: number;
+  user_name?: string;
+}
+
+export interface CreatePlaylistRequest {
+  user_id: number;
+  name: string;
+  description?: string;
+  is_public: boolean;
+}
+
+export interface UpdatePlaylistRequest {
+  name?: string;
+  description?: string;
+  is_public?: boolean;
+}
+
+/**
+ * Create a new playlist
+ */
+export async function createPlaylist(data: CreatePlaylistRequest): Promise<{ playlist_id: number; success: boolean }> {
+  const response = await fetch(`${API_BASE_URL}/playlists`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+  }
+
+  return await response.json();
+}
+
+/**
+ * Get user's playlists
+ */
+export async function getUserPlaylists(userId: number): Promise<Playlist[]> {
+  const response = await fetch(`${API_BASE_URL}/playlists/user/${userId}`);
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+  }
+
+  return await response.json();
+}
+
+/**
+ * Get public playlists
+ */
+export async function getPublicPlaylists(limit: number = 50): Promise<Playlist[]> {
+  const response = await fetch(`${API_BASE_URL}/playlists/public?limit=${limit}`);
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+  }
+
+  return await response.json();
+}
+
+/**
+ * Get a specific playlist
+ */
+export async function getPlaylist(playlistId: number): Promise<Playlist> {
+  const response = await fetch(`${API_BASE_URL}/playlists/${playlistId}`);
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+  }
+
+  return await response.json();
+}
+
+/**
+ * Get songs in a playlist
+ */
+export async function getPlaylistSongs(playlistId: number): Promise<Song[]> {
+  const response = await fetch(`${API_BASE_URL}/playlists/${playlistId}/songs`);
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+  }
+
+  return await response.json();
+}
+
+/**
+ * Add song to playlist
+ */
+export async function addSongToPlaylist(playlistId: number, songId: string): Promise<{ success: boolean; message: string }> {
+  const response = await fetch(`${API_BASE_URL}/playlists/${playlistId}/songs`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ song_id: songId }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+  }
+
+  return await response.json();
+}
+
+/**
+ * Remove song from playlist
+ */
+export async function removeSongFromPlaylist(playlistId: number, songId: string): Promise<{ success: boolean; message: string }> {
+  const response = await fetch(`${API_BASE_URL}/playlists/${playlistId}/songs/${songId}`, {
+    method: 'DELETE',
+  });
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+  }
+
+  return await response.json();
+}
+
+/**
+ * Update playlist
+ */
+export async function updatePlaylist(playlistId: number, data: UpdatePlaylistRequest): Promise<{ success: boolean; message: string }> {
+  const response = await fetch(`${API_BASE_URL}/playlists/${playlistId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+  }
+
+  return await response.json();
+}
+
+/**
+ * Delete playlist
+ */
+export async function deletePlaylist(playlistId: number): Promise<{ success: boolean; message: string }> {
+  const response = await fetch(`${API_BASE_URL}/playlists/${playlistId}`, {
+    method: 'DELETE',
+  });
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+  }
+
+  return await response.json();
+}
+
+/**
+ * Task status response from SunoAPI polling
+ */
+export interface TaskStatusResponse {
+  status: "PENDING" | "GENERATING" | "SUCCESS" | "FAILED";
+  song_id: string;
+  song?: Song;
+  error?: string;
+  message?: string;
+}
+
+/**
+ * Check SunoAPI task status
+ *
+ * @param taskId - SunoAPI task ID
+ * @returns Task status and song data when complete
+ */
+export async function checkTaskStatus(taskId: string): Promise<TaskStatusResponse> {
+  const response = await fetch(`${API_BASE_URL}/generate/status/${taskId}`);
 
   if (!response.ok) {
     throw new Error(`HTTP ${response.status}: ${response.statusText}`);

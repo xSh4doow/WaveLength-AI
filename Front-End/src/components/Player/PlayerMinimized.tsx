@@ -3,15 +3,18 @@
  * Visível em todas as páginas quando há música tocando
  */
 
-import { Play, Pause, SkipForward, SkipBack, ChevronUp } from "lucide-react";
+import { useState } from "react";
+import { Play, Pause, SkipForward, SkipBack, ChevronUp, List } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { usePlayer } from "@/contexts/PlayerContext";
 import { useQueue } from "@/contexts/QueueContext";
 import { getAudioUrl } from "@/services/api";
+import { QueuePanel } from "./QueuePanel";
 
 export function PlayerMinimized() {
   const { isPlaying, togglePlay, setPlayerState, currentTime, duration } = usePlayer();
   const { currentSong, playNext, playPrevious } = useQueue();
+  const [showQueuePanel, setShowQueuePanel] = useState(false);
 
   if (!currentSong) return null;
 
@@ -83,17 +86,33 @@ export function PlayerMinimized() {
             </Button>
           </div>
 
-          {/* Expand Button */}
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8"
-            onClick={() => setPlayerState("maximized")}
-          >
-            <ChevronUp className="w-5 h-5" />
-          </Button>
+          {/* Queue & Expand Buttons */}
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => setShowQueuePanel(true)}
+              title="Fila de Reprodução"
+            >
+              <List className="w-5 h-5" />
+            </Button>
+
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => setPlayerState("maximized")}
+              title="Expandir Player"
+            >
+              <ChevronUp className="w-5 h-5" />
+            </Button>
+          </div>
         </div>
       </div>
+
+      {/* Queue Panel */}
+      <QueuePanel isOpen={showQueuePanel} onClose={() => setShowQueuePanel(false)} />
     </div>
   );
 }

@@ -10,10 +10,14 @@ import {
   Home,
   Volume2,
   VolumeX,
-  Loader2
+  Loader2,
+  Mic,
+  List
 } from "lucide-react";
 import { getSong, getAudioUrl, type Song } from "@/services/api";
 import { toast } from "@/hooks/use-toast";
+import { downloadSong } from "@/utils/downloadSong";
+import { SongTags } from "@/components/ui/song-tags";
 
 export const Play = () => {
   const { id } = useParams<{ id: string }>();
@@ -27,6 +31,7 @@ export const Play = () => {
   const [currentTime, setCurrentTime] = useState(0);
   const [volume, setVolume] = useState(1);
   const [isMuted, setIsMuted] = useState(false);
+  const [showLyrics, setShowLyrics] = useState(true);
 
   // Load song data
   useEffect(() => {
@@ -118,21 +123,22 @@ export const Play = () => {
     }
   };
 
-  const handleDownload = () => {
+  const handleDownload = async () => {
     if (!song) return;
 
-    const audioUrl = getAudioUrl(song.audio_path);
-    const link = document.createElement("a");
-    link.href = audioUrl;
-    link.download = `${song.song_name}.wav`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-
-    toast({
-      title: "Download iniciado",
-      description: `${song.song_name}.wav`,
-    });
+    try {
+      await downloadSong(song.audio_path, song.song_name);
+      toast({
+        title: "Download iniciado",
+        description: song.song_name,
+      });
+    } catch (error) {
+      toast({
+        title: "Erro no download",
+        description: "Não foi possível baixar a música",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleShare = async () => {
@@ -247,7 +253,7 @@ export const Play = () => {
               </div>
 
               {/* Song Info */}
-              <div className="space-y-2">
+              <div className="space-y-3">
                 <h1 className="text-3xl font-bold">{song.song_name}</h1>
                 <p className="text-muted-foreground">Por {song.user_name}</p>
                 {song.caption && (
@@ -255,11 +261,7 @@ export const Play = () => {
                     "{song.caption}"
                   </p>
                 )}
-                {song.genre && (
-                  <span className="inline-block px-3 py-1 rounded-full glass-effect text-sm">
-                    {song.genre}
-                  </span>
-                )}
+                <SongTags song={song} maxTags={3} />
               </div>
 
               {/* Audio Player */}
@@ -324,10 +326,21 @@ export const Play = () => {
 
                   {/* Action Buttons */}
                   <div className="flex items-center gap-2">
+                    {song.has_lyrics && song.lyrics && (
+                      <Button
+                        variant={showLyrics ? "default" : "outline"}
+                        size="icon"
+                        onClick={() => setShowLyrics(!showLyrics)}
+                        title="Mostrar/Ocultar Letra"
+                      >
+                        <Mic className="w-5 h-5" />
+                      </Button>
+                    )}
                     <Button
                       variant="outline"
                       size="icon"
                       onClick={handleDownload}
+                      title="Download"
                     >
                       <Download className="w-5 h-5" />
                     </Button>
@@ -335,6 +348,7 @@ export const Play = () => {
                       variant="outline"
                       size="icon"
                       onClick={handleShare}
+                      title="Compartilhar"
                     >
                       <Share2 className="w-5 h-5" />
                     </Button>
@@ -344,9 +358,17 @@ export const Play = () => {
             </div>
 
             {/* Right Column - Lyrics (conditional) */}
-            {song.has_lyrics && song.lyrics && (
+            {showLyrics && song.has_lyrics && song.lyrics && (
               <div className="glass-effect rounded-3xl p-8">
-                <h3 className="text-xl font-bold mb-6">Letra</h3>
+                <div className="flex items-center justify-between mb-6">
+                  <h3 className="text-xl font-bold">Letra</h3>
+                  <button
+                    onClick={() => setShowLyrics(false)}
+                    className="text-muted-foreground hover:text-foreground"
+                  >
+                    <Mic className="w-5 h-5" />
+                  </button>
+                </div>
                 <div className="max-h-[600px] overflow-y-auto pr-2">
                   <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed">
                     {song.lyrics}

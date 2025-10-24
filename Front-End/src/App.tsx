@@ -15,6 +15,8 @@ import Create from "./pages/Create";
 import Player from "./pages/Player";
 import Library from "./pages/Library";
 import Play from "./pages/Play";
+import Playlists from "./pages/Playlists";
+import PlaylistDetail from "./pages/PlaylistDetail";
 import NotFound from "./pages/NotFound";
 import { useAuth } from "./contexts/AuthContext";
 
@@ -56,6 +58,8 @@ const App = () => (
                   <Route path="/create" element={<ProtectedRoute><Create /></ProtectedRoute>} />
                   <Route path="/player/:id" element={<ProtectedRoute><Player /></ProtectedRoute>} />
                   <Route path="/library" element={<ProtectedRoute><Library /></ProtectedRoute>} />
+                  <Route path="/playlists" element={<ProtectedRoute><Playlists /></ProtectedRoute>} />
+                  <Route path="/playlist/:playlistId" element={<ProtectedRoute><PlaylistDetail /></ProtectedRoute>} />
 
                   {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                   <Route path="*" element={<NotFound />} />
