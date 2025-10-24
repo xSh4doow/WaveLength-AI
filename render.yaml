@@ -4,7 +4,7 @@ services:
     env: python
     region: oregon
     plan: free
-    branch: main
+    branch: commit1
     rootDir: Back-End
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn src.main:app --host 0.0.0.0 --port $PORT
@@ -13,5 +13,15 @@ services:
         value: 3.11.0
       - key: PORT
         value: 10000
-      - key: USE_MOCK_AI
-        value: false
+      - key: DEVICE
+        value: cpu
+      - key: BLIP_MODEL
+        value: Salesforce/blip-image-captioning-large
+      - key: USE_SUNO
+        value: true
+      - key: SUNO_API_KEY
+        sync: false  # Add via Render dashboard (secret)
+      - key: SUNO_API_URL
+        value: https://api.sunoapi.org
+      - key: SUNO_MODEL
+        value: V4
