@@ -1,6 +1,13 @@
 import { test, expect } from '@playwright/test';
+import { loginTestUser } from './helpers/auth';
 
 test.describe('Navegação', () => {
+  // Clear localStorage before each test to ensure clean state
+  test.beforeEach(async ({ page }) => {
+    await page.goto('http://localhost:8080');
+    await page.evaluate(() => localStorage.clear());
+  });
+
   test('deve carregar página inicial', async ({ page }) => {
     await page.goto('/');
 
@@ -25,32 +32,27 @@ test.describe('Navegação', () => {
   });
 
   test('deve navegar para dashboard', async ({ page }) => {
-    await page.goto('/');
+    // Login first since dashboard is a protected route
+    await loginTestUser(page);
 
-    const dashboardLink = page.locator('a').filter({ hasText: /dashboard|painel/i });
+    // Should already be on dashboard after login
+    await expect(page).toHaveURL(/\/dashboard/);
 
-    if (await dashboardLink.count() > 0) {
-      await dashboardLink.first().click();
-      await expect(page).toHaveURL(/\/dashboard/);
-    } else {
-      // Acesso direto se não houver link
-      await page.goto('/dashboard');
-      await expect(page).toHaveURL(/\/dashboard/);
-    }
+    // Verify dashboard elements
+    await expect(page.locator('text=Wavelength')).toBeVisible();
   });
 
   test('deve navegar para biblioteca', async ({ page }) => {
-    await page.goto('/');
+    // Login first since library is a protected route
+    await loginTestUser(page);
 
-    const libraryLink = page.locator('a').filter({ hasText: /biblioteca|library|músicas/i });
+    // Navigate to library from dashboard
+    const libraryLink = page.locator('button:has-text("Criações")');
+    await libraryLink.click();
 
-    if (await libraryLink.count() > 0) {
-      await libraryLink.first().click();
-      await expect(page).toHaveURL(/\/library/);
-    } else {
-      await page.goto('/library');
-      await expect(page).toHaveURL(/\/library/);
-    }
+    // Verify navigation
+    await expect(page).toHaveURL(/\/library/);
+    await expect(page.locator('text=Criações')).toBeVisible();
   });
 
   test('deve exibir 404 para rotas inexistentes', async ({ page }) => {
@@ -77,14 +79,16 @@ test.describe('Navegação', () => {
   });
 
   test('deve manter navegação consistente entre páginas', async ({ page }) => {
-    await page.goto('/');
+    // Login first
+    await loginTestUser(page);
 
-    // Verificar presença de header/nav
+    // Verificar presença de header/nav no dashboard
     const nav = page.locator('header, nav').first();
     await expect(nav).toBeVisible();
 
-    // Navegar para outra página
-    await page.goto('/create');
+    // Navegar para outra página protegida
+    await page.click('button:has-text("Criações")');
+    await page.waitForURL('**/library');
 
     // Header deve continuar presente
     await expect(nav).toBeVisible();

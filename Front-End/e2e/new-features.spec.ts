@@ -8,31 +8,36 @@
  */
 
 import { test, expect } from '@playwright/test';
+import { loginTestUser } from './helpers/auth';
 
 test.describe('New Features - Session 3', () => {
 
   test.describe('Dashboard Features', () => {
+    // Clear localStorage before each test
+    test.beforeEach(async ({ page }) => {
+      await page.goto('http://localhost:8080');
+      await page.evaluate(() => localStorage.clear());
+    });
+
     test('should display dashboard with user info', async ({ page }) => {
-      await page.goto('http://localhost:8080/dashboard');
+      // Login first since dashboard is protected
+      await loginTestUser(page);
 
-      // Should show dashboard or redirect to home if no user
-      const url = page.url();
-      expect(url).toMatch(/\/(dashboard|)$/);
+      // Should be on dashboard after login
+      await expect(page).toHaveURL(/\/dashboard/);
 
-      if (url.includes('dashboard')) {
-        // Check for main elements
-        await expect(page.locator('text=Wavelength')).toBeVisible();
-        await expect(page.locator('text=Sua Biblioteca')).toBeVisible();
-      }
+      // Check for main elements
+      await expect(page.locator('text=Wavelength')).toBeVisible();
+      await expect(page.locator('text=Sua Biblioteca')).toBeVisible();
     });
 
     test('should have "Create Music" button', async ({ page }) => {
-      await page.goto('http://localhost:8080/dashboard');
+      // Login first
+      await loginTestUser(page);
 
-      if (page.url().includes('dashboard')) {
-        const createButton = page.locator('button:has-text("Crie sua Música")');
-        await expect(createButton).toBeVisible();
-      }
+      // Should be on dashboard
+      const createButton = page.locator('button:has-text("Crie sua Música")');
+      await expect(createButton).toBeVisible();
     });
 
     test('should show empty state when no songs', async ({ page }) => {
@@ -45,53 +50,68 @@ test.describe('New Features - Session 3', () => {
         });
       });
 
-      await page.goto('http://localhost:8080/dashboard');
+      // Login
+      await loginTestUser(page);
 
-      if (page.url().includes('dashboard')) {
-        await expect(page.locator('text=Comece sua jornada musical')).toBeVisible();
-      }
+      // Should show empty state
+      await expect(page.locator('text=Comece sua jornada musical')).toBeVisible();
     });
   });
 
   test.describe('Library Features', () => {
+    // Clear localStorage before each test
+    test.beforeEach(async ({ page }) => {
+      await page.goto('http://localhost:8080');
+      await page.evaluate(() => localStorage.clear());
+    });
+
     test('should display library page', async ({ page }) => {
-      await page.goto('http://localhost:8080/library');
+      // Login and navigate to library
+      await loginTestUser(page);
+      await page.click('button:has-text("Criações")');
 
-      const url = page.url();
-      expect(url).toMatch(/\/(library|)$/);
-
-      if (url.includes('library')) {
-        await expect(page.locator('text=Criações')).toBeVisible();
-      }
+      // Verify we're on library
+      await expect(page).toHaveURL(/\/library/);
+      await expect(page.locator('text=Criações')).toBeVisible();
     });
 
     test('should have search and filter controls', async ({ page }) => {
-      await page.goto('http://localhost:8080/library');
+      // Login and navigate to library
+      await loginTestUser(page);
+      await page.click('button:has-text("Criações")');
+      await page.waitForURL('**/library');
 
-      if (page.url().includes('library')) {
-        // Search input
-        const searchInput = page.locator('input[placeholder*="Buscar"]');
-        await expect(searchInput).toBeVisible();
+      // Search input
+      const searchInput = page.locator('input[placeholder*="Buscar"]');
+      await expect(searchInput).toBeVisible();
 
-        // Filter selects
-        await expect(page.locator('text=Todos os gêneros')).toBeVisible();
-        await expect(page.locator('text=Mais recentes')).toBeVisible();
-      }
+      // Filter selects
+      await expect(page.locator('text=Todos os gêneros')).toBeVisible();
+      await expect(page.locator('text=Mais recentes')).toBeVisible();
     });
 
     test('should allow searching songs', async ({ page }) => {
-      await page.goto('http://localhost:8080/library');
+      // Login and navigate to library
+      await loginTestUser(page);
+      await page.click('button:has-text("Criações")');
+      await page.waitForURL('**/library');
 
-      if (page.url().includes('library')) {
-        const searchInput = page.locator('input[placeholder*="Buscar"]');
-        await searchInput.fill('test song');
-        await expect(searchInput).toHaveValue('test song');
-      }
+      const searchInput = page.locator('input[placeholder*="Buscar"]');
+      await searchInput.fill('test song');
+      await expect(searchInput).toHaveValue('test song');
     });
   });
 
   test.describe('Create Page - New Fields', () => {
+    // Clear localStorage before each test
+    test.beforeEach(async ({ page }) => {
+      await page.goto('http://localhost:8080');
+      await page.evaluate(() => localStorage.clear());
+    });
+
     test('should show all new input fields', async ({ page }) => {
+      // Login and navigate to create page
+      await loginTestUser(page);
       await page.goto('http://localhost:8080/create');
 
       // User Name field (required)
@@ -109,6 +129,8 @@ test.describe('New Features - Session 3', () => {
     });
 
     test('should validate required user name field', async ({ page }) => {
+      // Login and navigate to create page
+      await loginTestUser(page);
       await page.goto('http://localhost:8080/create');
 
       // Try to generate without user name (button should be disabled without image)
@@ -119,6 +141,8 @@ test.describe('New Features - Session 3', () => {
     });
 
     test('should allow selecting music type', async ({ page }) => {
+      // Login and navigate to create page
+      await loginTestUser(page);
       await page.goto('http://localhost:8080/create');
 
       // Click on "Com Vocal"
@@ -130,6 +154,8 @@ test.describe('New Features - Session 3', () => {
     });
 
     test('should adjust duration slider', async ({ page }) => {
+      // Login and navigate to create page
+      await loginTestUser(page);
       await page.goto('http://localhost:8080/create');
 
       const durationSlider = page.locator('input[type="range"]').first();
@@ -226,8 +252,8 @@ test.describe('New Features - Session 3', () => {
 
       await page.goto('http://localhost:8080/play/test-song-456');
 
-      // Wait for page to load
-      await page.waitForLoadState('networkidle');
+      // Wait for song title to appear (indicates page loaded)
+      await expect(page.locator('text=Another Test')).toBeVisible({ timeout: 10000 });
 
       // Should show lyrics
       await expect(page.locator('text=Letra')).toBeVisible();
@@ -236,40 +262,48 @@ test.describe('New Features - Session 3', () => {
   });
 
   test.describe('Navigation between new pages', () => {
+    // Clear localStorage before each test
+    test.beforeEach(async ({ page }) => {
+      await page.goto('http://localhost:8080');
+      await page.evaluate(() => localStorage.clear());
+    });
+
     test('should navigate from dashboard to library', async ({ page }) => {
-      await page.goto('http://localhost:8080/dashboard');
+      // Login first
+      await loginTestUser(page);
 
-      if (page.url().includes('dashboard')) {
-        const libraryLink = page.locator('button:has-text("Criações")');
-        await libraryLink.click();
+      // Should be on dashboard
+      const libraryLink = page.locator('button:has-text("Criações")');
+      await libraryLink.click();
 
-        await page.waitForURL('**/library');
-        expect(page.url()).toContain('/library');
-      }
+      await page.waitForURL('**/library');
+      expect(page.url()).toContain('/library');
     });
 
     test('should navigate from dashboard to create', async ({ page }) => {
-      await page.goto('http://localhost:8080/dashboard');
+      // Login first
+      await loginTestUser(page);
 
-      if (page.url().includes('dashboard')) {
-        const createButton = page.locator('button:has-text("Crie sua Música")').first();
-        await createButton.click();
+      // Should be on dashboard
+      const createButton = page.locator('button:has-text("Crie sua Música")').first();
+      await createButton.click();
 
-        await page.waitForURL('**/create');
-        expect(page.url()).toContain('/create');
-      }
+      await page.waitForURL('**/create');
+      expect(page.url()).toContain('/create');
     });
 
     test('should navigate from library back to dashboard', async ({ page }) => {
-      await page.goto('http://localhost:8080/library');
+      // Login and go to library
+      await loginTestUser(page);
+      await page.click('button:has-text("Criações")');
+      await page.waitForURL('**/library');
 
-      if (page.url().includes('library')) {
-        const homeLink = page.locator('button:has-text("Início")');
-        await homeLink.click();
+      // Navigate back to dashboard
+      const homeLink = page.locator('button:has-text("Início")');
+      await homeLink.click();
 
-        await page.waitForURL('**/dashboard');
-        expect(page.url()).toContain('/dashboard');
-      }
+      await page.waitForURL('**/dashboard');
+      expect(page.url()).toContain('/dashboard');
     });
 
     test('should navigate from public play page to home', async ({ page }) => {
@@ -304,25 +338,31 @@ test.describe('New Features - Session 3', () => {
   });
 
   test.describe('Responsive Design', () => {
-    test('should display mobile FAB button on dashboard', async ({ page }) => {
+    // Clear localStorage before each test
+    test.beforeEach(async ({ page }) => {
+      await page.goto('http://localhost:8080');
+      await page.evaluate(() => localStorage.clear());
       await page.setViewportSize({ width: 375, height: 667 }); // iPhone size
-      await page.goto('http://localhost:8080/dashboard');
+    });
 
-      if (page.url().includes('dashboard')) {
-        // Mobile FAB (Floating Action Button) should be visible
-        const fab = page.locator('button').filter({ hasText: '+' }).last();
-        await expect(fab).toBeVisible();
-      }
+    test('should display mobile FAB button on dashboard', async ({ page }) => {
+      // Login first
+      await loginTestUser(page);
+
+      // Should be on dashboard
+      // Mobile FAB (Floating Action Button) should be visible
+      const fab = page.locator('button').filter({ hasText: '+' }).last();
+      await expect(fab).toBeVisible();
     });
 
     test('should adapt layout on mobile for library', async ({ page }) => {
-      await page.setViewportSize({ width: 375, height: 667 });
-      await page.goto('http://localhost:8080/library');
+      // Login and navigate to library
+      await loginTestUser(page);
+      await page.click('button:has-text("Criações")');
+      await page.waitForURL('**/library');
 
-      if (page.url().includes('library')) {
-        // Should still show search and filters
-        await expect(page.locator('input[placeholder*="Buscar"]')).toBeVisible();
-      }
+      // Should still show search and filters
+      await expect(page.locator('input[placeholder*="Buscar"]')).toBeVisible();
     });
   });
 });

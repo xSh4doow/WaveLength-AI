@@ -4,10 +4,9 @@
  */
 
 import { test, expect } from '@playwright/test';
+import { loginTestUser } from './helpers/auth';
 
 test.describe('Follow System', () => {
-  const user1Email = `user1${Date.now()}@test.com`;
-  const user2Email = `user2${Date.now()}@test.com`;
   const password = 'TestPass123!';
 
   test.beforeEach(async ({ page }) => {
@@ -18,23 +17,11 @@ test.describe('Follow System', () => {
   test('should search for users by name', async ({ page, context }) => {
     // Create User 2 in another context
     const page2 = await context.newPage();
-    await page2.goto('http://localhost:8080/auth');
-    await page2.click('text=Não tem conta? Registre-se');
-    await page2.fill('input[type="text"]', 'Searchable User');
-    await page2.fill('input[type="email"]', user2Email);
-    await page2.fill('input[type="password"]', password);
-    await page2.click('button:has-text("Criar Conta")');
-    await page2.waitForURL('**/dashboard');
+    await loginTestUser(page2, 'Searchable User');
     await page2.close();
 
     // Login as User 1
-    await page.goto('http://localhost:8080/auth');
-    await page.click('text=Não tem conta? Registre-se');
-    await page.fill('input[type="text"]', 'User One');
-    await page.fill('input[type="email"]', user1Email);
-    await page.fill('input[type="password"]', password);
-    await page.click('button:has-text("Criar Conta")');
-    await page.waitForURL('**/dashboard');
+    await loginTestUser(page, 'User One');
 
     // Scroll to "Descobrir Amigos" section
     await page.locator('text=Descobrir Amigos').scrollIntoViewIfNeeded();
@@ -53,23 +40,11 @@ test.describe('Follow System', () => {
   test('should follow and unfollow a user', async ({ page, context }) => {
     // Create User 2
     const page2 = await context.newPage();
-    await page2.goto('http://localhost:8080/auth');
-    await page2.click('text=Não tem conta? Registre-se');
-    await page2.fill('input[type="text"]', 'User To Follow');
-    await page2.fill('input[type="email"]', user2Email);
-    await page2.fill('input[type="password"]', password);
-    await page2.click('button:has-text("Criar Conta")');
-    await page2.waitForURL('**/dashboard');
+    await loginTestUser(page2, 'User To Follow');
     await page2.close();
 
     // Login as User 1
-    await page.goto('http://localhost:8080/auth');
-    await page.click('text=Não tem conta? Registre-se');
-    await page.fill('input[type="text"]', 'Follower User');
-    await page.fill('input[type="email"]', user1Email);
-    await page.fill('input[type="password"]', password);
-    await page.click('button:has-text("Criar Conta")');
-    await page.waitForURL('**/dashboard');
+    await loginTestUser(page, 'Follower User');
 
     // Search and follow User 2
     await page.locator('text=Descobrir Amigos').scrollIntoViewIfNeeded();
@@ -97,26 +72,12 @@ test.describe('Follow System', () => {
   test('should see friends songs in Library', async ({ page, context }) => {
     // Create User 2 and create a song
     const page2 = await context.newPage();
-    await page2.goto('http://localhost:8080/auth');
-    await page2.click('text=Não tem conta? Registre-se');
-    await page2.fill('input[type="text"]', 'Friend User');
-    await page2.fill('input[type="email"]', user2Email);
-    await page2.fill('input[type="password"]', password);
-    await page2.click('button:has-text("Criar Conta")');
-    await page2.waitForURL('**/dashboard');
-
-    // Create a song as User 2 (mock)
+    await loginTestUser(page2, 'Friend User');
     // In real scenario, would need to generate a song
     await page2.close();
 
     // Login as User 1
-    await page.goto('http://localhost:8080/auth');
-    await page.click('text=Não tem conta? Registre-se');
-    await page.fill('input[type="text"]', 'Main User');
-    await page.fill('input[type="email"]', user1Email);
-    await page.fill('input[type="password"]', password);
-    await page.click('button:has-text("Criar Conta")');
-    await page.waitForURL('**/dashboard');
+    await loginTestUser(page, 'Main User');
 
     // Follow User 2
     await page.locator('text=Descobrir Amigos').scrollIntoViewIfNeeded();
@@ -140,33 +101,15 @@ test.describe('Follow System', () => {
   test('should show following count in dashboard', async ({ page, context }) => {
     // Create 2 users to follow
     const page2 = await context.newPage();
-    await page2.goto('http://localhost:8080/auth');
-    await page2.click('text=Não tem conta? Registre-se');
-    await page2.fill('input[type="text"]', 'User A');
-    await page2.fill('input[type="email"]', `userA${Date.now()}@test.com`);
-    await page2.fill('input[type="password"]', password);
-    await page2.click('button:has-text("Criar Conta")');
-    await page2.waitForURL('**/dashboard');
+    await loginTestUser(page2, 'User A');
     await page2.close();
 
     const page3 = await context.newPage();
-    await page3.goto('http://localhost:8080/auth');
-    await page3.click('text=Não tem conta? Registre-se');
-    await page3.fill('input[type="text"]', 'User B');
-    await page3.fill('input[type="email"]', `userB${Date.now()}@test.com`);
-    await page3.fill('input[type="password"]', password);
-    await page3.click('button:has-text("Criar Conta")');
-    await page3.waitForURL('**/dashboard');
+    await loginTestUser(page3, 'User B');
     await page3.close();
 
     // Login as main user
-    await page.goto('http://localhost:8080/auth');
-    await page.click('text=Não tem conta? Registre-se');
-    await page.fill('input[type="text"]', 'Main User');
-    await page.fill('input[type="email"]', user1Email);
-    await page.fill('input[type="password"]', password);
-    await page.click('button:has-text("Criar Conta")');
-    await page.waitForURL('**/dashboard');
+    await loginTestUser(page, 'Main User');
 
     // Follow both users
     await page.locator('text=Descobrir Amigos').scrollIntoViewIfNeeded();

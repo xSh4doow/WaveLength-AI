@@ -17,6 +17,7 @@ interface AuthContextType {
   userName: string;
   email: string;
   isAuthenticated: boolean;
+  isLoading: boolean;
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string, name: string) => Promise<void>;
   logout: () => void;
@@ -28,6 +29,7 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   // Load user from localStorage on mount
   useEffect(() => {
@@ -42,6 +44,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         email: storedEmail,
       });
     }
+
+    setIsLoading(false);
   }, []);
 
   const register = async (email: string, password: string, name: string) => {
@@ -146,6 +150,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         userName: user?.userName ?? "",
         email: user?.email ?? "",
         isAuthenticated: !!user,
+        isLoading,
         login,
         register,
         logout,

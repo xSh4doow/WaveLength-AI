@@ -43,7 +43,8 @@ class TestHealthEndpoint:
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "ok"
-        assert "ai_ready" in data
+        assert "blip_ready" in data
+        assert "udio_ready" in data
         assert "device" in data
 
     def test_health_includes_models_status(self, client):
@@ -52,7 +53,6 @@ class TestHealthEndpoint:
         data = response.json()
         assert "models_loaded" in data
         assert "blip" in data["models_loaded"]
-        assert "musicgen" in data["models_loaded"]
 
 
 class TestGenerateEndpoint:
