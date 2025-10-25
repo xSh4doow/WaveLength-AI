@@ -6,13 +6,13 @@ pydantic[email]>=2.0.0
 email-validator>=2.0.0
 
 # ML Core - Image Captioning
-torch==2.8.0
-transformers==4.44.2
+torch==2.4.0
+transformers==4.40.0
 Pillow==10.4.0
 
 # ML Support Libraries
-accelerate==0.34.2
-safetensors==0.4.5
+accelerate==0.31.0
+safetensors==0.4.3
 einops==0.8.0
 sentencepiece==0.2.0
 
