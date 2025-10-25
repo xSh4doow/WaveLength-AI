@@ -1,4 +1,12 @@
+databases:
+  - name: wavelength-db
+    databaseName: wavelength
+    user: wavelength
+    plan: free
+    region: oregon
+
 services:
+  # Backend API
   - type: web
     name: wavelength-backend
     env: python
@@ -13,6 +21,10 @@ services:
         value: 3.11.0
       - key: PORT
         value: 10000
+      - key: DATABASE_URL
+        fromDatabase:
+          name: wavelength-db
+          property: connectionString
       - key: DEVICE
         value: cpu
       - key: BLIP_MODEL
