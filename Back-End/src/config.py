@@ -20,3 +20,9 @@ OUT_DIR = os.path.join(os.path.dirname(__file__), "out")
 
 # Device (auto, cuda, cpu, mps)
 DEVICE = os.getenv("DEVICE", "auto")
+
+# CORS - Allowed origins
+CORS_ORIGINS = os.getenv(
+    "CORS_ORIGINS",
+    "http://localhost:5173,http://localhost:3000,https://wave-length-ai.vercel.app"
+).split(",")

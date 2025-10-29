@@ -35,3 +35,5 @@ services:
         value: https://api.sunoapi.org
       - key: SUNO_MODEL
         value: V4
+      - key: CORS_ORIGINS
+        value: https://wave-length-ai.vercel.app
