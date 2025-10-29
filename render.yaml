@@ -17,8 +17,6 @@ services:
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn src.main:app --host 0.0.0.0 --port $PORT
     envVars:
-      - key: PYTHON_VERSION
-        value: 3.11.0
       - key: PORT
         value: 10000
       - key: DATABASE_URL
