@@ -25,6 +25,8 @@ services:
           property: connectionString
       - key: DEVICE
         value: cpu
+      - key: USE_BLIP
+        value: false
       - key: BLIP_MODEL
         value: Salesforce/blip-image-captioning-large
       - key: USE_SUNO

@@ -7,6 +7,7 @@ load_dotenv()
 PORT = int(os.getenv("PORT", "8000"))
 
 # Image Captioning Model
+USE_BLIP = os.getenv("USE_BLIP", "true").lower() == "true"
 BLIP_MODEL = os.getenv("BLIP_MODEL", "Salesforce/blip-image-captioning-large")
 
 # Music Generation API (SunoAPI)

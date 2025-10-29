@@ -79,11 +79,14 @@ def init_ai_handlers():
     global blip_handler, suno_handler, BLIP_READY, SUNO_READY
 
     try:
-        # Initialize BLIP (always needed for image captioning)
-        if blip_handler is None:
+        # Initialize BLIP only if enabled (can be disabled to save memory)
+        if config.USE_BLIP and blip_handler is None:
             blip_handler = BLIPHandler(model_name=config.BLIP_MODEL)
             BLIP_READY = True
             print("[main] BLIP handler initialized successfully")
+        elif not config.USE_BLIP:
+            print("[main] BLIP disabled via USE_BLIP=false")
+            BLIP_READY = False
     except Exception as e:
         print(f"[main] Failed to initialize BLIP: {repr(e)}")
         BLIP_READY = False
@@ -306,8 +309,9 @@ async def generate(
         except Exception as e:
             print(f"[generate] Failed to initialize AI: {repr(e)}")
 
-    # Final decision: use mock if BLIP not ready or explicitly requested
-    use_mock = (engine == "mock") or (not BLIP_READY)
+    # Final decision: use mock only if explicitly requested or SunoAPI not ready
+    # BLIP is optional - we can use SunoAPI without it
+    use_mock = (engine == "mock") or (not SUNO_READY)
 
     # Generate unique song ID
     song_id = uuid.uuid4().hex
@@ -371,18 +375,29 @@ async def generate(
 
         else:
             # ---------- AI MODE with SunoAPI ----------
-            # 1. Generate caption with BLIP
-            pil_image = Image.open(io.BytesIO(img_bytes)).convert("RGB")
-            caption_data = blip_handler.generate_enhanced_caption(pil_image)
-            caption = caption_data["caption"]
-            enhanced_caption = caption_data["enhanced_caption"]
-            print(f"[generate] Caption: {caption}")
+            # 1. Generate caption with BLIP (or use generic caption if BLIP unavailable)
+            if BLIP_READY:
+                pil_image = Image.open(io.BytesIO(img_bytes)).convert("RGB")
+                caption_data = blip_handler.generate_enhanced_caption(pil_image)
+                caption = caption_data["caption"]
+                enhanced_caption = caption_data["enhanced_caption"]
+                print(f"[generate] Caption (BLIP): {caption}")
+            else:
+                # Fallback: use generic caption when BLIP is disabled
+                caption = f"A {genre or 'musical'} piece inspired by an image"
+                enhanced_caption = caption
+                print(f"[generate] Caption (generic - BLIP disabled): {caption}")
 
             # 2. Map to musical style
-            music_style = cultural_mapper.map_caption_to_style(caption)
-            print(f"[generate] CulturalMapper suggested: {music_style['genre']}")
+            if BLIP_READY:
+                music_style = cultural_mapper.map_caption_to_style(caption)
+                print(f"[generate] CulturalMapper suggested: {music_style['genre']}")
+            else:
+                # Default music style when BLIP unavailable
+                music_style = {"genre": genre or "ambient", "bpm": 100, "mood": "neutral"}
+                print(f"[generate] Using default style (BLIP disabled): {music_style['genre']}")
 
-            # PRIORITY: Use user genre if provided, otherwise use CulturalMapper
+            # PRIORITY: Use user genre if provided, otherwise use CulturalMapper/default
             if genre and genre.strip():
                 print(f"[generate] User override: Using user genre '{genre}' instead of '{music_style['genre']}'")
                 music_style["genre"] = genre.strip()
