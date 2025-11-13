@@ -44,10 +44,10 @@ export interface Song {
 }
 
 /**
- * Generate music from an image
+ * Generate music from one or multiple images
  */
 export async function generateMusic(
-  imageFile: File,
+  imageFiles: File | File[],
   options: {
     userName: string;
     songName?: string;
@@ -61,7 +61,13 @@ export async function generateMusic(
   }
 ): Promise<GenerateMusicResponse> {
   const formData = new FormData();
-  formData.append('image', imageFile);
+
+  // Support both single file and array of files
+  const files = Array.isArray(imageFiles) ? imageFiles : [imageFiles];
+  files.forEach((file) => {
+    formData.append('images', file);
+  });
+
   formData.append('user_name', options.userName);
   if (options.songName) formData.append('song_name', options.songName);
   if (options.genre) formData.append('genre', options.genre);

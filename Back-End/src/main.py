@@ -24,6 +24,7 @@ from src import database
 
 # Import services
 from src.services import playlist_service
+from src.services.narrative_builder import create_narrative
 
 # Import schemas
 from src.models.schemas import SongResponse, SongUpdate
@@ -262,7 +263,7 @@ def get_friends_songs_endpoint(
 
 @app.post("/generate")
 async def generate(
-    image: UploadFile = File(...),
+    images: List[UploadFile] = File(...),
     user_name: str = Form(...),
     song_name: Optional[str] = Form(None),
     genre: Optional[str] = Form(None),
@@ -274,10 +275,10 @@ async def generate(
     engine: Optional[str] = Form(None)  # "blip" | "mock" | None
 ):
     """
-    Generate music from image (ASYNC - returns task_id immediately).
+    Generate music from one or multiple images (ASYNC - returns task_id immediately).
 
     Args:
-        image: Image file
+        images: List of image files (1-3 images)
         user_name: Name of the user creating the song
         song_name: Name of the song (optional)
         genre: Music genre (optional)
@@ -298,8 +299,19 @@ async def generate(
     if not user_name or not user_name.strip():
         raise HTTPException(400, "user_name is required")
 
-    # Read image
-    img_bytes = await image.read()
+    # Validate number of images (1-3)
+    if not images or len(images) == 0:
+        raise HTTPException(400, "At least one image is required")
+    if len(images) > 3:
+        raise HTTPException(400, "Maximum 3 images allowed")
+
+    # Read all images
+    images_bytes = []
+    for img in images:
+        img_bytes = await img.read()
+        images_bytes.append(img_bytes)
+
+    print(f"[generate] Processing {len(images_bytes)} image(s)")
 
     # Try to initialize AI handlers
     use_mock = (engine == "mock")
@@ -340,11 +352,11 @@ async def generate(
             audio_path = os.path.join(config.OUT_DIR, audio_filename)
             save_audio(audio_path, audio_data, sample_rate)
 
-            # Save image
+            # Save first image (in mock mode, we only save one)
             image_filename = f"{song_id}.jpg"
             image_path = os.path.join(config.OUT_DIR, image_filename)
             with open(image_path, "wb") as f:
-                f.write(img_bytes)
+                f.write(images_bytes[0])
 
             # Save to database with SUCCESS status (mock completes immediately)
             database.create_song({
@@ -375,20 +387,40 @@ async def generate(
 
         else:
             # ---------- AI MODE with SunoAPI ----------
-            # 1. Generate caption with BLIP (or use generic caption if BLIP unavailable)
+            # 1. Generate captions for all images with BLIP (or use generic captions if BLIP unavailable)
+            captions_data = []
             if BLIP_READY:
-                pil_image = Image.open(io.BytesIO(img_bytes)).convert("RGB")
-                caption_data = blip_handler.generate_enhanced_caption(pil_image)
-                caption = caption_data["caption"]
-                enhanced_caption = caption_data["enhanced_caption"]
-                print(f"[generate] Caption (BLIP): {caption}")
+                print(f"[generate] Processing {len(images_bytes)} image(s) with BLIP...")
+                for idx, img_bytes_item in enumerate(images_bytes):
+                    pil_image = Image.open(io.BytesIO(img_bytes_item)).convert("RGB")
+                    caption_data = blip_handler.generate_enhanced_caption(pil_image)
+                    captions_data.append(caption_data)
+                    print(f"[generate] Image {idx+1}/{len(images_bytes)} - Caption: {caption_data['caption']}")
             else:
-                # Fallback: use generic caption when BLIP is disabled
-                caption = f"A {genre or 'musical'} piece inspired by an image"
-                enhanced_caption = caption
-                print(f"[generate] Caption (generic - BLIP disabled): {caption}")
+                # Fallback: use generic captions when BLIP is disabled
+                for idx in range(len(images_bytes)):
+                    caption_data = {
+                        "caption": f"A {genre or 'musical'} piece inspired by image {idx+1}",
+                        "enhanced_caption": f"A {genre or 'musical'} piece inspired by image {idx+1}",
+                        "detected_moods": [],
+                        "keywords": []
+                    }
+                    captions_data.append(caption_data)
+                print(f"[generate] Using generic captions (BLIP disabled) for {len(images_bytes)} image(s)")
 
-            # 2. Map to musical style
+            # 2. Create narrative connecting all images
+            narrative_result = create_narrative(captions_data)
+            caption = narrative_result["narrative"]
+            enhanced_caption = narrative_result["narrative"]
+            combined_caption = narrative_result["combined_caption"]
+            all_moods = narrative_result["all_moods"]
+            dominant_mood = narrative_result["dominant_mood"]
+
+            print(f"[generate] Narrative created: {caption}")
+            print(f"[generate] Dominant mood: {dominant_mood}")
+            print(f"[generate] All moods: {all_moods}")
+
+            # 3. Map to musical style
             if BLIP_READY:
                 music_style = cultural_mapper.map_caption_to_style(caption)
                 print(f"[generate] CulturalMapper suggested: {music_style['genre']}")
@@ -402,7 +434,7 @@ async def generate(
                 print(f"[generate] User override: Using user genre '{genre}' instead of '{music_style['genre']}'")
                 music_style["genre"] = genre.strip()
 
-            # 3. Build parameters for SunoAPI Custom Mode
+            # 4. Build parameters for SunoAPI Custom Mode
             style, title, lyrics_prompt = prompt_builder.build_for_custom_mode(
                 caption=enhanced_caption,
                 music_style=music_style,
@@ -414,13 +446,13 @@ async def generate(
             )
             print(f"[generate] Custom Mode - Style: {style}, Title: {title}")
 
-            # 4. Save image locally
+            # 5. Save first image locally (for thumbnail)
             image_filename = f"{song_id}.jpg"
             image_path = os.path.join(config.OUT_DIR, image_filename)
             with open(image_path, "wb") as f:
-                f.write(img_bytes)
+                f.write(images_bytes[0])  # Save first image
 
-            # 5. Create task in SunoAPI (ASYNC - don't wait)
+            # 6. Create task in SunoAPI (ASYNC - don't wait)
             if SUNO_READY and suno_handler:
                 print("[generate] Creating SunoAPI task...")
 
@@ -571,12 +603,12 @@ async def generate(
         audio_path = os.path.join(config.OUT_DIR, audio_filename)
         save_audio(audio_path, audio_data, sample_rate)
 
-        # Save image if not saved yet
+        # Save first image if not saved yet
         image_filename = f"{song_id}.jpg"
         image_path = os.path.join(config.OUT_DIR, image_filename)
         if not os.path.exists(image_path):
             with open(image_path, "wb") as f:
-                f.write(img_bytes)
+                f.write(images_bytes[0])
 
         # Save to database
         database.create_song({

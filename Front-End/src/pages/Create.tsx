@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,6 +18,7 @@ import { useQueue } from "@/contexts/QueueContext";
 import { usePlayer } from "@/contexts/PlayerContext";
 import { useUser } from "@/contexts/UserContext";
 import { useTaskPolling } from "@/hooks/useTaskPolling";
+import { ImagePreview } from "@/components/ImagePreview";
 
 const genres = [
   "Pop",
@@ -39,8 +40,7 @@ export const Create = () => {
   const [songName, setSongName] = useState("");
   const [genre, setGenre] = useState("");
   const [tags, setTags] = useState("");
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imageFiles, setImageFiles] = useState<File[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationStatus, setGenerationStatus] = useState("");
   const [generationProgress, setGenerationProgress] = useState(0);
@@ -49,6 +49,7 @@ export const Create = () => {
   const [includeTitleInLyrics, setIncludeTitleInLyrics] = useState(true);
   const [taskId, setTaskId] = useState<string | null>(null);
   const [songId, setSongId] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Use task polling hook
   const { status: pollStatus, song: pollSong, error: pollError, progress: pollProgress } = useTaskPolling({
@@ -137,26 +138,49 @@ export const Create = () => {
   }, []);
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      setImageFile(file);
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setImagePreview(reader.result as string);
-        if (!songName) {
-          setSongName(file.name.replace(/\.[^/.]+$/, ""));
-        }
-      };
-      reader.readAsDataURL(file);
+    const files = Array.from(e.target.files || []);
+
+    if (files.length === 0) return;
+
+    // Check total images (current + new)
+    const totalImages = imageFiles.length + files.length;
+    if (totalImages > 3) {
+      toast({
+        title: "Limite excedido",
+        description: "Você pode enviar no máximo 3 imagens",
+        variant: "destructive",
+      });
+      return;
     }
+
+    // Add files to array
+    setImageFiles([...imageFiles, ...files]);
+
+    // Auto-fill song name from first image if empty
+    if (!songName && imageFiles.length === 0 && files[0]) {
+      setSongName(files[0].name.replace(/\.[^/.]+$/, ""));
+    }
+
+    // Clear file input value to allow selecting the same file again
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
+  const handleRemoveImage = (index: number) => {
+    setImageFiles(imageFiles.filter((_, i) => i !== index));
+  };
+
+  const handleAddMoreClick = () => {
+    fileInputRef.current?.click();
   };
 
   const handleGenerate = async () => {
     // Validations
-    if (!imageFile) {
+    if (imageFiles.length === 0) {
       toast({
         title: "Erro",
-        description: "Por favor, selecione uma foto",
+        description: "Por favor, selecione pelo menos uma foto",
         variant: "destructive",
       });
       return;
@@ -183,11 +207,11 @@ export const Create = () => {
     }, 1000);
 
     try {
-      setGenerationStatus("Analisando sua foto...");
+      setGenerationStatus(imageFiles.length > 1 ? "Analisando suas fotos..." : "Analisando sua foto...");
       setGenerationProgress(10);
 
       // Call backend API (returns task_id immediately)
-      const result = await generateMusic(imageFile, {
+      const result = await generateMusic(imageFiles, {
         userName,
         songName: songName || undefined,
         genre: genre || undefined,
@@ -336,49 +360,41 @@ export const Create = () => {
               <div className="space-y-6">
                 <div>
                   <Label className="text-lg font-semibold mb-4 block">
-                    Envie sua Foto
+                    Envie suas Fotos (1-3)
                   </Label>
-                  <div className="relative aspect-square rounded-2xl border-2 border-dashed border-border overflow-hidden group cursor-pointer hover:border-primary transition-colors">
-                    {imagePreview ? (
-                      <>
-                        <img
-                          src={imagePreview}
-                          alt="Preview"
-                          className="w-full h-full object-cover"
-                        />
-                        <label className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
-                          <div className="text-center">
-                            <Upload className="w-12 h-12 mx-auto mb-2 text-white" />
-                            <p className="text-white font-medium">
-                              Trocar foto
-                            </p>
-                          </div>
-                          <input
-                            type="file"
-                            accept="image/*"
-                            onChange={handleImageUpload}
-                            className="hidden"
-                          />
-                        </label>
-                      </>
-                    ) : (
+
+                  {/* Upload area - show only if no images or less than 3 */}
+                  {imageFiles.length < 3 && (
+                    <div className="relative aspect-square rounded-2xl border-2 border-dashed border-border overflow-hidden group cursor-pointer hover:border-primary transition-colors mb-4">
                       <label className="absolute inset-0 flex items-center justify-center cursor-pointer">
                         <div className="text-center">
                           <Upload className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
-                          <p className="font-medium mb-2">Clique para enviar</p>
+                          <p className="font-medium mb-2">
+                            {imageFiles.length === 0 ? "Clique para enviar" : "Adicionar mais fotos"}
+                          </p>
                           <p className="text-sm text-muted-foreground">
-                            JPG, PNG ou WEBP
+                            JPG, PNG ou WEBP (máx. 3)
                           </p>
                         </div>
                         <input
+                          ref={fileInputRef}
                           type="file"
                           accept="image/*"
+                          multiple
                           onChange={handleImageUpload}
                           className="hidden"
                         />
                       </label>
-                    )}
-                  </div>
+                    </div>
+                  )}
+
+                  {/* Image preview component */}
+                  <ImagePreview
+                    images={imageFiles}
+                    onRemoveImage={handleRemoveImage}
+                    onAddMore={imageFiles.length < 3 ? handleAddMoreClick : undefined}
+                    maxImages={3}
+                  />
                 </div>
               </div>
 
@@ -488,7 +504,7 @@ export const Create = () => {
                   size="lg"
                   className="w-full"
                   onClick={handleGenerate}
-                  disabled={!imagePreview || !userName.trim()}
+                  disabled={imageFiles.length === 0 || !userName.trim()}
                 >
                   <Wand2 className="w-5 h-5 mr-2" />
                   Gerar Música
