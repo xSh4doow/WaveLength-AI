@@ -7,6 +7,10 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 // Export API_URL for use in hooks
 export const API_URL = API_BASE_URL;
 
+// DIAGNOSTIC: Log API base URL on load
+console.log('[API] Base URL configured:', API_BASE_URL);
+console.log('[API] VITE_API_URL from env:', import.meta.env.VITE_API_URL);
+
 export interface GenerateMusicResponse {
   song_id: string;
   task_id: string | null;
@@ -31,6 +35,8 @@ export interface Song {
   song_name: string;
   user_name: string;
   image_path?: string | null;
+  image_paths?: string | null;  // JSON string array of all image paths
+  image_captions?: string | null;  // JSON string array of captions for each image
   audio_path: string;
   caption?: string | null;
   genre?: string | null;
@@ -57,6 +63,7 @@ export async function generateMusic(
     hasVocals?: boolean;
     hasLyrics?: boolean;
     includeTitleInLyrics?: boolean;
+    language?: string;
     engine?: string;
   }
 ): Promise<GenerateMusicResponse> {
@@ -76,6 +83,7 @@ export async function generateMusic(
   formData.append('has_vocals', (options.hasVocals || false).toString());
   formData.append('has_lyrics', (options.hasLyrics || false).toString());
   formData.append('include_title_in_lyrics', (options.includeTitleInLyrics !== undefined ? options.includeTitleInLyrics : true).toString());
+  formData.append('language', options.language || 'en');  // Default to English
   if (options.engine) formData.append('engine', options.engine);
 
   const response = await fetch(`${API_BASE_URL}/generate`, {
@@ -198,6 +206,75 @@ export function getAudioUrl(audioPath: string): string {
   // If audioPath starts with /, remove it to avoid double slash
   const cleanPath = audioPath.startsWith('/') ? audioPath.substring(1) : audioPath;
   return `${API_BASE_URL}/${cleanPath}`;
+}
+
+/**
+ * Parse image_paths from JSON string to array
+ * Falls back to single image_path if not available
+ */
+export interface ImageCaption {
+  index: number;
+  caption: string;
+  moods?: string[];
+}
+
+export function parseImagePaths(song: Song): string[] {
+  console.log('[parseImagePaths] Input song:', {
+    id: song.id,
+    song_name: song.song_name,
+    image_path: song.image_path,
+    image_paths: song.image_paths,
+    image_paths_type: typeof song.image_paths,
+  });
+
+  try {
+    // If image_paths exists, parse it
+    if (song.image_paths) {
+      const paths = JSON.parse(song.image_paths);
+      console.log('[parseImagePaths] Parsed paths:', paths);
+      if (Array.isArray(paths) && paths.length > 0) {
+        console.log('[parseImagePaths] Returning parsed array:', paths);
+        return paths;
+      }
+    }
+  } catch (e) {
+    console.warn('[parseImagePaths] Failed to parse image_paths:', e, 'Raw value:', song.image_paths);
+  }
+
+  // Fallback to single image_path
+  if (song.image_path) {
+    console.log('[parseImagePaths] Using fallback image_path:', song.image_path);
+    return [song.image_path];
+  }
+
+  console.log('[parseImagePaths] No images found, returning empty array');
+  return [];
+}
+
+export function parseImageCaptions(song: Song): ImageCaption[] {
+  console.log('[parseImageCaptions] Input song:', {
+    id: song.id,
+    song_name: song.song_name,
+    image_captions: song.image_captions,
+    image_captions_type: typeof song.image_captions,
+  });
+
+  try {
+    // If image_captions exists, parse it
+    if (song.image_captions) {
+      const captions = JSON.parse(song.image_captions);
+      console.log('[parseImageCaptions] Parsed captions:', captions);
+      if (Array.isArray(captions) && captions.length > 0) {
+        console.log('[parseImageCaptions] Returning parsed array:', captions);
+        return captions;
+      }
+    }
+  } catch (e) {
+    console.warn('[parseImageCaptions] Failed to parse image_captions:', e, 'Raw value:', song.image_captions);
+  }
+
+  console.log('[parseImageCaptions] No captions found, returning empty array');
+  return [];
 }
 
 /**

@@ -19,6 +19,7 @@ import { usePlayer } from "@/contexts/PlayerContext";
 import { useUser } from "@/contexts/UserContext";
 import { useTaskPolling } from "@/hooks/useTaskPolling";
 import { ImagePreview } from "@/components/ImagePreview";
+import { LanguageSelector } from "@/components/LanguageSelector";
 
 const genres = [
   "Pop",
@@ -47,6 +48,7 @@ export const Create = () => {
   const [elapsedTime, setElapsedTime] = useState(0);
   const [vocalType, setVocalType] = useState<"instrumental" | "with_lyrics">("instrumental");
   const [includeTitleInLyrics, setIncludeTitleInLyrics] = useState(true);
+  const [language, setLanguage] = useState("en");  // Language for lyrics
   const [taskId, setTaskId] = useState<string | null>(null);
   const [songId, setSongId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -138,27 +140,26 @@ export const Create = () => {
   }, []);
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || []);
+    const file = e.target.files?.[0];  // Only get the first file (no multiple)
 
-    if (files.length === 0) return;
+    if (!file) return;
 
-    // Check total images (current + new)
-    const totalImages = imageFiles.length + files.length;
-    if (totalImages > 3) {
+    // Check if already have 3 images
+    if (imageFiles.length >= 3) {
       toast({
-        title: "Limite excedido",
-        description: "Você pode enviar no máximo 3 imagens",
+        title: "Limite atingido",
+        description: "Você já adicionou 3 imagens (máximo permitido)",
         variant: "destructive",
       });
       return;
     }
 
-    // Add files to array
-    setImageFiles([...imageFiles, ...files]);
+    // Add file to array (only 1 at a time)
+    setImageFiles([...imageFiles, file]);
 
     // Auto-fill song name from first image if empty
-    if (!songName && imageFiles.length === 0 && files[0]) {
-      setSongName(files[0].name.replace(/\.[^/.]+$/, ""));
+    if (!songName && imageFiles.length === 0) {
+      setSongName(file.name.replace(/\.[^/.]+$/, ""));
     }
 
     // Clear file input value to allow selecting the same file again
@@ -220,6 +221,7 @@ export const Create = () => {
         hasVocals: vocalType === "with_lyrics",
         hasLyrics: vocalType === "with_lyrics",
         includeTitleInLyrics: includeTitleInLyrics,
+        language: language,  // Language for lyrics
       });
 
       if (result.status === "SUCCESS") {
@@ -380,7 +382,6 @@ export const Create = () => {
                           ref={fileInputRef}
                           type="file"
                           accept="image/*"
-                          multiple
                           onChange={handleImageUpload}
                           className="hidden"
                         />
@@ -485,18 +486,26 @@ export const Create = () => {
 
                 {/* Include Title in Lyrics Checkbox (only for vocals) */}
                 {vocalType === "with_lyrics" && (
-                  <div className="flex items-center space-x-2 p-4 border rounded-lg bg-background/50">
-                    <input
-                      type="checkbox"
-                      id="includeTitleInLyrics"
-                      checked={includeTitleInLyrics}
-                      onChange={(e) => setIncludeTitleInLyrics(e.target.checked)}
-                      className="w-4 h-4 text-primary bg-gray-100 border-gray-300 rounded focus:ring-primary focus:ring-2"
+                  <>
+                    <div className="flex items-center space-x-2 p-4 border rounded-lg bg-background/50">
+                      <input
+                        type="checkbox"
+                        id="includeTitleInLyrics"
+                        checked={includeTitleInLyrics}
+                        onChange={(e) => setIncludeTitleInLyrics(e.target.checked)}
+                        className="w-4 h-4 text-primary bg-gray-100 border-gray-300 rounded focus:ring-primary focus:ring-2"
+                      />
+                      <Label htmlFor="includeTitleInLyrics" className="cursor-pointer">
+                        Incluir nome da música na letra?
+                      </Label>
+                    </div>
+
+                    {/* Language Selector */}
+                    <LanguageSelector
+                      value={language}
+                      onChange={setLanguage}
                     />
-                    <Label htmlFor="includeTitleInLyrics" className="cursor-pointer">
-                      Incluir nome da música na letra?
-                    </Label>
-                  </div>
+                  </>
                 )}
 
                 <Button
@@ -504,7 +513,7 @@ export const Create = () => {
                   size="lg"
                   className="w-full"
                   onClick={handleGenerate}
-                  disabled={imageFiles.length === 0 || !userName.trim()}
+                  disabled={imageFiles.length === 0 || !userName?.trim()}
                 >
                   <Wand2 className="w-5 h-5 mr-2" />
                   Gerar Música

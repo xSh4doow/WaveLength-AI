@@ -46,13 +46,29 @@ class NarrativeBuilder:
         return caption.strip()
 
     @staticmethod
-    def extract_mood_descriptor(moods: List[str]) -> str:
+    def extract_mood_descriptor(moods: List[str], mood_counts: dict = None) -> str:
         """
-        Extracts a single mood descriptor from a list of moods.
-        Returns the first mood or empty string.
+        Extracts the most dominant mood descriptor from a list of moods.
+        Uses frequency counting if mood_counts provided, otherwise returns first.
+
+        Args:
+            moods: List of mood strings
+            mood_counts: Optional dictionary with mood frequencies
+
+        Returns:
+            Most frequent or first mood, or empty string if no moods
         """
         if not moods or len(moods) == 0:
             return ""
+
+        # If we have frequency counts, use the most frequent
+        if mood_counts and len(mood_counts) > 0:
+            # Filter to only moods that are in our list
+            relevant_counts = {m: mood_counts[m] for m in moods if m in mood_counts}
+            if relevant_counts:
+                return max(relevant_counts, key=relevant_counts.get)
+
+        # Fallback: return first mood
         return moods[0]
 
     @staticmethod
@@ -142,8 +158,11 @@ class NarrativeBuilder:
             caption = caption_data.get("caption", "")
             simplified = cls.simplify_caption(caption)
 
-            # Add mood descriptor if available
-            mood = cls.extract_mood_descriptor(caption_data.get("detected_moods", []))
+            # Add mood descriptor if available (use frequency-based selection)
+            mood = cls.extract_mood_descriptor(
+                caption_data.get("detected_moods", []),
+                mood_counts=mood_counts  # Pass counts for better selection
+            )
             if mood:
                 simplified = f"{mood} {simplified}"
 

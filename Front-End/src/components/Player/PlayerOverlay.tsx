@@ -23,9 +23,10 @@ import {
 import { Button } from "@/components/ui/button";
 import { usePlayer } from "@/contexts/PlayerContext";
 import { useQueue } from "@/contexts/QueueContext";
-import { getAudioUrl, toggleLike } from "@/services/api";
+import { getAudioUrl, toggleLike, parseImagePaths, parseImageCaptions } from "@/services/api";
 import { downloadSong } from "@/utils/downloadSong";
 import { QueuePanel } from "./QueuePanel";
+import { ImageCarousel } from "@/components/ImageCarousel";
 import { toast } from "@/hooks/use-toast";
 
 // Memoized PlayerControls component
@@ -184,11 +185,27 @@ export function PlayerOverlay() {
     }
   }, [currentSong]);
 
-  // Memoize imageUrl
-  const imageUrl = useMemo(
-    () => (currentSong?.image_path ? getAudioUrl(currentSong.image_path) : ""),
-    [currentSong?.image_path]
+  // Memoize images and captions
+  const imagePaths = useMemo(
+    () => (currentSong ? parseImagePaths(currentSong) : []),
+    [currentSong]
   );
+
+  const imageCaptions = useMemo(
+    () => (currentSong ? parseImageCaptions(currentSong) : []),
+    [currentSong]
+  );
+
+  // DIAGNOSTIC LOGS
+  console.log('[PlayerOverlay] Current song data:', {
+    songId: currentSong?.id,
+    songName: currentSong?.song_name,
+    image_path: currentSong?.image_path,
+    image_paths: currentSong?.image_paths,
+    image_captions: currentSong?.image_captions,
+    parsedImagePaths: imagePaths,
+    parsedImageCaptions: imageCaptions,
+  });
 
   // Memoize handlers
   const handleSeek = useCallback(
@@ -286,17 +303,17 @@ export function PlayerOverlay() {
         <main className="flex-1 overflow-y-auto">
           <div className="container mx-auto max-w-2xl px-4 py-8">
             <div className="space-y-8">
-              {/* Album Art - Larger and centered */}
+              {/* Album Art - Carousel for multiple images */}
               <div className="relative aspect-square rounded-3xl overflow-hidden shadow-2xl">
-                {imageUrl ? (
-                  <img
-                    src={imageUrl}
-                    alt={currentSong.song_name}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <div className="w-full h-full bg-gradient-to-br from-primary to-accent" />
-                )}
+                <ImageCarousel
+                  images={imagePaths}
+                  captions={imageCaptions}
+                  alt={currentSong.song_name}
+                  className="w-full h-full"
+                  showArrows={true}
+                  showIndicators={true}
+                  showCaptions={true}
+                />
               </div>
 
               {/* Song Info */}

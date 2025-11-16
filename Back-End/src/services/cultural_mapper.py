@@ -124,6 +124,48 @@ class CulturalMapper:
                 "mood": "modern and sleek",
                 "instrumentation": ["digital synths", "electronic drums", "glitch effects"]
             }
+        },
+
+        # === HUMAN/PORTRAIT CATEGORIES ===
+        "portrait_happy": {
+            "keywords": ["smiling", "smile", "laughing", "laugh", "happy", "cheerful", "grinning", "joy"],
+            "style": {
+                "genre": "indie pop",
+                "subgenre": "upbeat",
+                "bpm": 115,
+                "mood": "cheerful and uplifting",
+                "instrumentation": ["acoustic guitar", "ukulele", "hand claps", "bright synths"]
+            }
+        },
+        "portrait_serious": {
+            "keywords": ["man", "woman", "person", "people", "portrait", "face", "looking", "standing", "sitting"],
+            "style": {
+                "genre": "indie folk",
+                "subgenre": "intimate",
+                "bpm": 85,
+                "mood": "contemplative and personal",
+                "instrumentation": ["acoustic guitar", "soft vocals", "gentle piano"]
+            }
+        },
+        "action_scene": {
+            "keywords": ["running", "jumping", "fighting", "moving", "action", "walking", "dancing"],
+            "style": {
+                "genre": "electronic rock",
+                "subgenre": "energetic",
+                "bpm": 140,
+                "mood": "intense and driving",
+                "instrumentation": ["electric guitar", "synth bass", "powerful drums"]
+            }
+        },
+        "object_close_up": {
+            "keywords": ["holding", "hand", "hands", "object", "item", "close", "bottle", "cup", "phone"],
+            "style": {
+                "genre": "lo-fi hip hop",
+                "subgenre": "chill",
+                "bpm": 80,
+                "mood": "relaxed and focused",
+                "instrumentation": ["jazzy piano", "soft drums", "vinyl texture"]
+            }
         }
     }
 
@@ -155,7 +197,64 @@ class CulturalMapper:
         if best_match and best_match_count > 0:
             return best_match.copy()
 
-        # Default fallback: neutral ambient
+        # Default fallback: use smart fallback
+        return self.get_smart_fallback(caption)
+
+    def get_smart_fallback(self, caption: str) -> Dict:
+        """
+        Smart fallback when no keywords match.
+        Analyzes caption content to suggest appropriate genre.
+
+        Args:
+            caption: Image caption from BLIP
+
+        Returns:
+            Dictionary with genre, subgenre, bpm, mood, instrumentation
+        """
+        caption_lower = caption.lower()
+
+        # Detecta presença de pessoas
+        if any(word in caption_lower for word in ["man", "woman", "person", "people", "child", "group", "someone"]):
+            # Detecta emoção positiva
+            if any(word in caption_lower for word in ["smiling", "smile", "happy", "laugh", "joy"]):
+                return {
+                    "genre": "indie pop",
+                    "subgenre": "cheerful",
+                    "bpm": 110,
+                    "mood": "joyful and lighthearted",
+                    "instrumentation": ["acoustic guitar", "ukulele", "light percussion"]
+                }
+            # Pessoa neutra/séria
+            else:
+                return {
+                    "genre": "indie folk",
+                    "subgenre": "storytelling",
+                    "bpm": 90,
+                    "mood": "personal and reflective",
+                    "instrumentation": ["acoustic guitar", "soft piano", "strings"]
+                }
+
+        # Detecta objetos/still life
+        if any(word in caption_lower for word in ["holding", "object", "item", "bottle", "book", "phone", "cup", "glass"]):
+            return {
+                "genre": "lo-fi hip hop",
+                "subgenre": "chill",
+                "bpm": 85,
+                "mood": "relaxed and focused",
+                "instrumentation": ["jazzy piano", "soft drums", "vinyl texture"]
+            }
+
+        # Detecta natureza/paisagem (mais genérico)
+        if any(word in caption_lower for word in ["landscape", "view", "scene", "scenery", "outdoor"]):
+            return {
+                "genre": "ambient folk",
+                "subgenre": "natural",
+                "bpm": 75,
+                "mood": "peaceful and organic",
+                "instrumentation": ["acoustic guitar", "nature sounds", "soft pads"]
+            }
+
+        # Fallback padrão (mantém ambient mas com variação)
         return {
             "genre": "ambient",
             "subgenre": "neutral",

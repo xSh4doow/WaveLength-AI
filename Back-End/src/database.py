@@ -221,7 +221,9 @@ def init_database():
             cursor.execute("""
                 ALTER TABLE songs
                 ADD COLUMN IF NOT EXISTS suno_task_id TEXT,
-                ADD COLUMN IF NOT EXISTS generation_status TEXT DEFAULT 'SUCCESS'
+                ADD COLUMN IF NOT EXISTS generation_status TEXT DEFAULT 'SUCCESS',
+                ADD COLUMN IF NOT EXISTS image_paths TEXT,
+                ADD COLUMN IF NOT EXISTS image_captions TEXT
             """)
         else:
             # SQLite syntax - check if columns exist first
@@ -233,6 +235,33 @@ def init_database():
 
             if "generation_status" not in columns:
                 cursor.execute("ALTER TABLE songs ADD COLUMN generation_status TEXT DEFAULT 'SUCCESS'")
+
+            if "image_paths" not in columns:
+                cursor.execute("ALTER TABLE songs ADD COLUMN image_paths TEXT")
+
+            if "image_captions" not in columns:
+                cursor.execute("ALTER TABLE songs ADD COLUMN image_captions TEXT")
+
+        # MIGRATION: Populate image_paths for old songs that only have image_path
+        if USE_POSTGRES:
+            cursor.execute("""
+                UPDATE songs
+                SET image_paths = jsonb_build_array(image_path)::text,
+                    image_captions = '[]'::text
+                WHERE image_paths IS NULL AND image_path IS NOT NULL
+            """)
+        else:
+            # SQLite version
+            cursor.execute("""
+                UPDATE songs
+                SET image_paths = '["' || image_path || '"]',
+                    image_captions = '[]'
+                WHERE image_paths IS NULL AND image_path IS NOT NULL
+            """)
+
+        migrated_count = cursor.rowcount
+        if migrated_count > 0:
+            print(f"[Database] Migrated {migrated_count} old songs to use image_paths")
 
         conn.commit()
         print(f"[Database] Tables initialized successfully ({'PostgreSQL' if USE_POSTGRES else 'SQLite'})")
@@ -246,11 +275,11 @@ def create_song(song_data: Dict[str, Any]) -> str:
         if USE_POSTGRES:
             cursor.execute("""
                 INSERT INTO songs (
-                    id, user_id, user_name, song_name, image_path, audio_path,
+                    id, user_id, user_name, song_name, image_path, image_paths, audio_path,
                     caption, genre, tags, duration, has_vocals, has_lyrics,
                     lyrics, is_liked, suno_task_id, generation_status, created_at
                 ) VALUES (
-                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
                 )
             """, (
                 song_data["id"],
@@ -258,6 +287,7 @@ def create_song(song_data: Dict[str, Any]) -> str:
                 song_data["user_name"],
                 song_data["song_name"],
                 song_data.get("image_path"),
+                song_data.get("image_paths"),  # JSON string of all image paths
                 song_data["audio_path"],
                 song_data.get("caption"),
                 song_data.get("genre"),
@@ -274,16 +304,17 @@ def create_song(song_data: Dict[str, Any]) -> str:
         else:
             cursor.execute("""
                 INSERT INTO songs (
-                    id, user_id, user_name, song_name, image_path, audio_path,
+                    id, user_id, user_name, song_name, image_path, image_paths, audio_path,
                     caption, genre, tags, duration, has_vocals, has_lyrics,
                     lyrics, is_liked, suno_task_id, generation_status, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 song_data["id"],
                 song_data.get("user_id"),
                 song_data["user_name"],
                 song_data["song_name"],
                 song_data.get("image_path"),
+                song_data.get("image_paths"),  # JSON string of all image paths
                 song_data["audio_path"],
                 song_data.get("caption"),
                 song_data.get("genre"),

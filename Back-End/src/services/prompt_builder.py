@@ -4,6 +4,13 @@ from typing import Dict, Optional
 class PromptBuilder:
     """Builds optimized text prompts for music generation API from caption and musical style."""
 
+    # Language instructions for lyrics generation
+    LANGUAGE_INSTRUCTIONS = {
+        "en": "Write lyrics in English",
+        "pt": "Escreva a letra em Português do Brasil",
+        "es": "Escribe la letra en Español"
+    }
+
     def build_for_custom_mode(
         self,
         caption: str,
@@ -12,7 +19,9 @@ class PromptBuilder:
         user_tags: Optional[str] = None,
         song_name: Optional[str] = None,
         has_vocals: bool = False,
-        include_title_in_lyrics: bool = True
+        include_title_in_lyrics: bool = True,
+        language: str = "en",
+        detected_moods: Optional[list] = None
     ) -> tuple[str, str, str]:
         """
         Build parameters for SunoAPI Custom Mode.
@@ -25,6 +34,8 @@ class PromptBuilder:
             song_name: Name of the song
             has_vocals: Whether the music should have vocals
             include_title_in_lyrics: Whether to include song name in the lyrics prompt
+            language: Language for lyrics generation
+            detected_moods: List of moods detected from image by BLIP
 
         Returns:
             Tuple of (style, title, lyrics_prompt):
@@ -79,9 +90,53 @@ class PromptBuilder:
             elif "brother" in name_lower:
                 theme = "brotherhood bond, loyalty and sacrifice, family connection"
             else:
-                # Generic based on caption/mood
-                mood = music_style.get("mood", "emotional")
-                theme = f"{mood} story"
+                # Generate theme based on caption content and detected moods
+                caption_text = caption.lower() if caption else ""
+                theme = None
+
+                # PRIORITY 1: Use detected moods from BLIP
+                if detected_moods and len(detected_moods) > 0:
+                    primary_mood = detected_moods[0]
+                    theme = f"{primary_mood} atmosphere, vivid imagery and emotion"
+                    print(f"[PromptBuilder] Using BLIP mood: {primary_mood}")
+
+                # PRIORITY 2: Extract theme from caption content
+                elif caption_text:
+                    # Pessoas e emoções
+                    if any(word in caption_text for word in ["smiling", "smile", "happy", "laugh", "joy"]):
+                        theme = "joyful moments, capturing happiness and cheerful energy"
+                    elif any(word in caption_text for word in ["man", "woman", "person"]) and any(word in caption_text for word in ["holding", "standing", "sitting"]):
+                        theme = "intimate portrait, personal story and human connection"
+
+                    # Natureza
+                    elif any(word in caption_text for word in ["sunset", "sunrise", "sky", "ocean", "beach"]):
+                        theme = "natural beauty, peaceful scenery and contemplation"
+                    elif any(word in caption_text for word in ["forest", "trees", "nature", "mountain"]):
+                        theme = "wilderness adventure, exploring natural landscapes"
+
+                    # Urbano
+                    elif any(word in caption_text for word in ["city", "street", "building", "urban"]):
+                        theme = "urban life, city rhythms and metropolitan vibes"
+                    elif any(word in caption_text for word in ["neon", "lights", "night"]):
+                        theme = "nightlife energy, electric atmosphere and vibrant scenes"
+
+                    # Objetos/ações
+                    elif any(word in caption_text for word in ["holding", "hands", "close"]):
+                        theme = "intimate moments, cherished objects and memories"
+
+                # PRIORITY 3: Use mood from CulturalMapper (with variety)
+                if not theme:
+                    mood = music_style.get("mood", "emotional")
+                    # Variedade de temas baseados no mood
+                    mood_themes = {
+                        "calm and atmospheric": "tranquil journey, serene atmosphere and peace",
+                        "energetic and vibrant": "high energy story, dynamic movement and excitement",
+                        "peaceful and serene": "quiet moments, peaceful reflection and stillness",
+                        "dark and melancholic": "emotional depth, somber feelings and introspection",
+                        "joyful and lighthearted": "celebration of life, carefree spirit and joy",
+                        "contemplative and personal": "personal journey, deep thoughts and self-discovery"
+                    }
+                    theme = mood_themes.get(mood, f"{mood} narrative and emotional journey")
 
             # Build final prompt (KEEP UNDER 200 CHARS!)
             if include_title_in_lyrics and song_name and song_name.strip():
@@ -91,11 +146,15 @@ class PromptBuilder:
                 # No title reference
                 lyrics_prompt = f"{theme.capitalize()}."
 
+            # Add language instruction
+            lang_instruction = self.LANGUAGE_INSTRUCTIONS.get(language, self.LANGUAGE_INSTRUCTIONS["en"])
+            lyrics_prompt = f"{lyrics_prompt} {lang_instruction}."
+
             # ENFORCE 200 character limit
             if len(lyrics_prompt) > 200:
                 lyrics_prompt = lyrics_prompt[:197] + "..."
 
-            print(f"[PromptBuilder] Lyrics prompt ({len(lyrics_prompt)} chars): {lyrics_prompt}")
+            print(f"[PromptBuilder] Lyrics prompt ({len(lyrics_prompt)} chars, lang={language}): {lyrics_prompt}")
 
         return (style, title, lyrics_prompt)
 

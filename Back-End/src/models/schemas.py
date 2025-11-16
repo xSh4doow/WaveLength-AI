@@ -28,6 +28,7 @@ class SongResponse(BaseModel):
     user_name: str
     song_name: str
     image_path: Optional[str] = None
+    image_paths: Optional[str] = None  # JSON string array of all image paths
     audio_path: str
     caption: Optional[str] = None
     genre: Optional[str] = None

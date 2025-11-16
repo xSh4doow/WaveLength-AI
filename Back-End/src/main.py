@@ -1,6 +1,7 @@
 import os
 import io
 import uuid
+import json
 from typing import Optional, List
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Query, Body
 from fastapi.middleware.cors import CORSMiddleware
@@ -73,6 +74,14 @@ prompt_builder = PromptBuilder()
 # AI availability flags
 BLIP_READY = False
 SUNO_READY = False
+
+
+@app.on_event("startup")
+async def startup_event():
+    """Force load AI models on startup."""
+    print("[main] Running startup event - loading AI models...")
+    init_ai_handlers()
+    print("[main] Startup complete!")
 
 
 def init_ai_handlers():
@@ -272,6 +281,7 @@ async def generate(
     has_vocals: bool = Form(False),
     has_lyrics: bool = Form(False),
     include_title_in_lyrics: bool = Form(True),
+    language: str = Form("en"),  # "en" | "pt" | "es"
     engine: Optional[str] = Form(None)  # "blip" | "mock" | None
 ):
     """
@@ -352,11 +362,16 @@ async def generate(
             audio_path = os.path.join(config.OUT_DIR, audio_filename)
             save_audio(audio_path, audio_data, sample_rate)
 
-            # Save first image (in mock mode, we only save one)
+            # Save ALL images
+            saved_image_paths = []
+            for idx, img_bytes_item in enumerate(images_bytes):
+                img_filename = f"{song_id}_{idx}.jpg" if idx > 0 else f"{song_id}.jpg"
+                img_path = os.path.join(config.OUT_DIR, img_filename)
+                with open(img_path, "wb") as f:
+                    f.write(img_bytes_item)
+                saved_image_paths.append(f"/audio/{img_filename}")
+
             image_filename = f"{song_id}.jpg"
-            image_path = os.path.join(config.OUT_DIR, image_filename)
-            with open(image_path, "wb") as f:
-                f.write(images_bytes[0])
 
             # Save to database with SUCCESS status (mock completes immediately)
             database.create_song({
@@ -365,6 +380,8 @@ async def generate(
                 "user_name": user_name.strip(),
                 "song_name": final_song_name,
                 "image_path": f"/audio/{image_filename}",
+                "image_paths": json.dumps(saved_image_paths),  # ALL images
+                "image_captions": json.dumps([]),  # Empty captions for mock mode
                 "audio_path": f"/audio/{audio_filename}",
                 "caption": caption,
                 "genre": genre or "ambient",
@@ -442,15 +459,27 @@ async def generate(
                 user_tags=tags,
                 song_name=song_name,
                 has_vocals=has_vocals,
-                include_title_in_lyrics=include_title_in_lyrics
+                include_title_in_lyrics=include_title_in_lyrics,
+                language=language,  # Pass language for lyrics
+                detected_moods=all_moods  # Pass BLIP-detected moods for theme generation
             )
             print(f"[generate] Custom Mode - Style: {style}, Title: {title}")
 
-            # 5. Save first image locally (for thumbnail)
+            # 5. Save ALL images locally
+            saved_image_paths = []
+            for idx, img_bytes_item in enumerate(images_bytes):
+                # Use song_id with index for unique filenames
+                img_filename = f"{song_id}_{idx}.jpg" if idx > 0 else f"{song_id}.jpg"
+                img_path = os.path.join(config.OUT_DIR, img_filename)
+                with open(img_path, "wb") as f:
+                    f.write(img_bytes_item)
+                saved_image_paths.append(f"/audio/{img_filename}")
+
+            print(f"[generate] Saved {len(saved_image_paths)} image(s): {saved_image_paths}")
+
+            # For backward compatibility, use first image as main image_path
             image_filename = f"{song_id}.jpg"
-            image_path = os.path.join(config.OUT_DIR, image_filename)
-            with open(image_path, "wb") as f:
-                f.write(images_bytes[0])  # Save first image
+            main_image_path = f"/audio/{image_filename}"
 
             # 6. Create task in SunoAPI (ASYNC - don't wait)
             if SUNO_READY and suno_handler:
@@ -499,27 +528,32 @@ async def generate(
                                     generated_lyrics = lyrics_data[0].get("text", "")
                                     print(f"[generate] Lyrics generated successfully: {generated_lyrics[:100]}...")
 
-                                    # Analyze lyrics sentiment and adjust style
-                                    lyrics_lower = generated_lyrics.lower()
+                                    # Analyze lyrics sentiment ONLY if no moods were detected from images
+                                    # This prevents lyrics from overriding BLIP-detected moods
+                                    if not all_moods or len(all_moods) == 0:
+                                        print("[generate] No image moods detected - analyzing lyrics for mood...")
+                                        lyrics_lower = generated_lyrics.lower()
 
-                                    # Detect emotional intensity keywords
-                                    if any(word in lyrics_lower for word in ["battle", "fight", "war", "blood", "rage", "fury", "destroy"]):
-                                        lyrics_mood_adjustment = "intense and aggressive"
-                                        print("[generate] Lyrics analysis: INTENSE/AGGRESSIVE mood detected")
-                                    elif any(word in lyrics_lower for word in ["dark", "shadow", "fear", "death", "pain", "sorrow", "cry"]):
-                                        lyrics_mood_adjustment = "dark and melancholic"
-                                        print("[generate] Lyrics analysis: DARK/MELANCHOLIC mood detected")
-                                    elif any(word in lyrics_lower for word in ["love", "heart", "dream", "hope", "light", "joy", "happy"]):
-                                        lyrics_mood_adjustment = "uplifting and hopeful"
-                                        print("[generate] Lyrics analysis: UPLIFTING/HOPEFUL mood detected")
-                                    elif any(word in lyrics_lower for word in ["king", "legend", "hero", "power", "glory", "rise"]):
-                                        lyrics_mood_adjustment = "epic and triumphant"
-                                        print("[generate] Lyrics analysis: EPIC/TRIUMPHANT mood detected")
+                                        # Detect emotional intensity keywords
+                                        if any(word in lyrics_lower for word in ["battle", "fight", "war", "blood", "rage", "fury", "destroy"]):
+                                            lyrics_mood_adjustment = "intense and aggressive"
+                                            print("[generate] Lyrics analysis: INTENSE/AGGRESSIVE mood detected")
+                                        elif any(word in lyrics_lower for word in ["dark", "shadow", "fear", "death", "pain", "sorrow", "cry"]):
+                                            lyrics_mood_adjustment = "dark and melancholic"
+                                            print("[generate] Lyrics analysis: DARK/MELANCHOLIC mood detected")
+                                        elif any(word in lyrics_lower for word in ["love", "heart", "dream", "hope", "light", "joy", "happy"]):
+                                            lyrics_mood_adjustment = "uplifting and hopeful"
+                                            print("[generate] Lyrics analysis: UPLIFTING/HOPEFUL mood detected")
+                                        elif any(word in lyrics_lower for word in ["king", "legend", "hero", "power", "glory", "rise"]):
+                                            lyrics_mood_adjustment = "epic and triumphant"
+                                            print("[generate] Lyrics analysis: EPIC/TRIUMPHANT mood detected")
 
-                                    # Add mood to style if detected
-                                    if lyrics_mood_adjustment and style:
-                                        style = f"{style}, {lyrics_mood_adjustment}"
-                                        print(f"[generate] Adjusted style with lyrics mood: {style}")
+                                        # Add mood to style if detected
+                                        if lyrics_mood_adjustment and style:
+                                            style = f"{style}, {lyrics_mood_adjustment}"
+                                            print(f"[generate] Adjusted style with lyrics mood: {style}")
+                                    else:
+                                        print(f"[generate] Skipping lyrics mood analysis - using image moods: {all_moods}")
 
                                     lyrics_success = True
                                 else:
@@ -562,12 +596,31 @@ async def generate(
                     tags_list = [tag.strip().title() for tag in tags.split(",")]
                     capitalized_tags = ", ".join(tags_list)
 
+                # Build individual captions array for carousel
+                individual_captions = []
+                for idx, caption_data in enumerate(captions_data):
+                    individual_captions.append({
+                        "index": idx,
+                        "caption": caption_data.get("caption", ""),
+                        "moods": caption_data.get("detected_moods", [])[:3]  # Top 3 moods
+                    })
+
+                # DIAGNOSTIC LOGS
+                print(f"[generate] Saved image paths: {saved_image_paths}")
+                print(f"[generate] Individual captions: {individual_captions}")
+                image_paths_json = json.dumps(saved_image_paths)
+                image_captions_json = json.dumps(individual_captions)
+                print(f"[generate] image_paths JSON: {image_paths_json}")
+                print(f"[generate] image_captions JSON: {image_captions_json}")
+
                 database.create_song({
                     "id": song_id,
                     "user_id": user_id,
                     "user_name": user_name.strip(),
                     "song_name": final_song_name,
-                    "image_path": f"/audio/{image_filename}",
+                    "image_path": main_image_path,  # Main image (first one)
+                    "image_paths": image_paths_json,  # ALL images as JSON array
+                    "image_captions": image_captions_json,  # Individual captions for each image
                     "audio_path": "",  # Will be updated when task completes
                     "caption": caption,
                     "genre": style,  # Use capitalized style from Custom Mode
@@ -603,12 +656,17 @@ async def generate(
         audio_path = os.path.join(config.OUT_DIR, audio_filename)
         save_audio(audio_path, audio_data, sample_rate)
 
-        # Save first image if not saved yet
+        # Save ALL images if not saved yet
+        saved_image_paths = []
+        for idx, img_bytes_item in enumerate(images_bytes):
+            img_filename = f"{song_id}_{idx}.jpg" if idx > 0 else f"{song_id}.jpg"
+            img_path = os.path.join(config.OUT_DIR, img_filename)
+            if not os.path.exists(img_path):
+                with open(img_path, "wb") as f:
+                    f.write(img_bytes_item)
+            saved_image_paths.append(f"/audio/{img_filename}")
+
         image_filename = f"{song_id}.jpg"
-        image_path = os.path.join(config.OUT_DIR, image_filename)
-        if not os.path.exists(image_path):
-            with open(image_path, "wb") as f:
-                f.write(images_bytes[0])
 
         # Save to database
         database.create_song({
@@ -617,6 +675,8 @@ async def generate(
             "user_name": user_name.strip(),
             "song_name": final_song_name,
             "image_path": f"/audio/{image_filename}",
+            "image_paths": json.dumps(saved_image_paths),  # ALL images
+            "image_captions": json.dumps([]),  # Empty captions for error fallback
             "audio_path": f"/audio/{audio_filename}",
             "caption": "Error occurred (fallback to mock)",
             "genre": genre or "ambient",
