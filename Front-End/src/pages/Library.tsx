@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Music2, Play, Search, Loader2, Heart, Menu } from "lucide-react";
+import { Music2, Play, Search, Loader2, Heart, Menu, ListMusic } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -158,6 +158,13 @@ export const Library = () => {
                 Criações
               </button>
               <button
+                onClick={() => navigate("/playlists")}
+                className="text-muted-foreground hover:text-primary transition-colors flex items-center gap-2"
+              >
+                <ListMusic className="w-4 h-4" />
+                Playlists
+              </button>
+              <button
                 onClick={handleLogout}
                 className="text-muted-foreground hover:text-primary transition-colors"
               >
@@ -193,6 +200,16 @@ export const Library = () => {
                     className="text-left text-lg font-semibold text-foreground hover:text-primary transition-colors py-2"
                   >
                     Criações
+                  </button>
+                  <button
+                    onClick={() => {
+                      navigate("/playlists");
+                      setIsMobileMenuOpen(false);
+                    }}
+                    className="text-left text-lg font-semibold text-muted-foreground hover:text-primary transition-colors py-2 flex items-center gap-2"
+                  >
+                    <ListMusic className="w-5 h-5" />
+                    Playlists
                   </button>
                   <button
                     onClick={() => {

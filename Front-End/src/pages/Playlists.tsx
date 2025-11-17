@@ -4,7 +4,7 @@
 
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, Music, Lock, Globe, MoreVertical, Trash2, Edit, Play } from "lucide-react";
+import { Plus, Music, Lock, Globe, MoreVertical, Trash2, Edit, Play, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -25,7 +25,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
-import { useUser } from "@/contexts/UserContext";
+import { useAuth } from "@/contexts/AuthContext";
 import { useQueue } from "@/contexts/QueueContext";
 import {
   getUserPlaylists,
@@ -39,7 +39,7 @@ import {
 export default function Playlists() {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { user } = useUser();
+  const { userId, isAuthenticated } = useAuth();
   const { setQueue } = useQueue();
 
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
@@ -53,17 +53,17 @@ export default function Playlists() {
   const [isPublic, setIsPublic] = useState(true);
 
   useEffect(() => {
-    if (user?.id) {
+    if (userId) {
       loadPlaylists();
     }
-  }, [user]);
+  }, [userId]);
 
   const loadPlaylists = async () => {
-    if (!user?.id) return;
+    if (!userId) return;
 
     try {
       setLoading(true);
-      const data = await getUserPlaylists(user.id);
+      const data = await getUserPlaylists(userId);
       setPlaylists(data);
     } catch (error) {
       console.error("Failed to load playlists:", error);
@@ -78,7 +78,7 @@ export default function Playlists() {
   };
 
   const handleCreatePlaylist = async () => {
-    if (!user?.id || !name.trim()) return;
+    if (!userId || !name.trim()) return;
 
     try {
       if (editingPlaylist) {
@@ -92,7 +92,7 @@ export default function Playlists() {
       } else {
         // Create new playlist
         await createPlaylist({
-          user_id: user.id,
+          user_id: userId,
           name: name.trim(),
           description: description.trim() || undefined,
           is_public: isPublic,
@@ -173,7 +173,7 @@ export default function Playlists() {
     setShowCreateDialog(true);
   };
 
-  if (!user) {
+  if (!userId || !isAuthenticated) {
     return (
       <div className="container mx-auto max-w-7xl px-4 py-8">
         <div className="text-center">
@@ -188,11 +188,21 @@ export default function Playlists() {
     <div className="container mx-auto max-w-7xl px-4 py-8">
       {/* Header */}
       <div className="flex items-center justify-between mb-8">
-        <div>
-          <h1 className="text-3xl font-bold mb-2">Minhas Playlists</h1>
-          <p className="text-muted-foreground">
-            {playlists.length} {playlists.length === 1 ? "playlist" : "playlists"}
-          </p>
+        <div className="flex items-center gap-4">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => navigate(-1)}
+            className="hover:bg-accent"
+          >
+            <ArrowLeft className="w-5 h-5" />
+          </Button>
+          <div>
+            <h1 className="text-3xl font-bold mb-2">Minhas Playlists</h1>
+            <p className="text-muted-foreground">
+              {playlists.length} {playlists.length === 1 ? "playlist" : "playlists"}
+            </p>
+          </div>
         </div>
         <Button onClick={openCreateDialog}>
           <Plus className="w-4 h-4 mr-2" />
